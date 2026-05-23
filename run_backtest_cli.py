@@ -31,7 +31,7 @@ async def main():
 
     print(f"✅ Total Trades: {results['total_trades']}")
     print(f"📈 Win Rate:    {results['win_rate']:.1f}%")
-    print(f"💰 Net Pips:    {results['net_pips']:.1f}")
+    print(f"💰 Net Profit:  {results['net_pips']:.1f}R")
     print("=" * 50)
     print(f"📂 Results saved to database/backtest_results.db (Run ID: {results['run_id']})")
 

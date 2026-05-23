@@ -175,7 +175,7 @@ class CRTStrategy(BaseStrategy):
             # ─── 8. Risk & Results ──────────────────────────────────────────────
             risk_details = RiskManager.calculate_lot_size(symbol, entry_price, sl)
 
-            return {
+            signal = {
                 "strategy_id": self.get_id(), "strategy_name": self.get_name(),
                 "symbol": symbol, "direction": direction, "trade_type": "CRT",
                 "entry_price": round(entry_price, 5), "sl": round(sl, 5),
@@ -183,6 +183,13 @@ class CRTStrategy(BaseStrategy):
                 "quality_score": quality_score, "regime": detected_regime,
                 "risk_details": risk_details, "forensic_events": forensic_events
             }
+
+            # VERIFICATION LOG (For manual audit)
+            print(f"\n💎 [VERIFIED SIGNAL]: {symbol} {direction} | Quality: {quality_score} | Boost: {base_boost}")
+            for event in forensic_events:
+                print(f"   ∟ {event['type']}: {event['message']}")
+            
+            return signal
 
         except Exception as e:
             print(f"CRT Error: {e}")
