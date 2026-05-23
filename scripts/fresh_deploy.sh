@@ -6,7 +6,7 @@ set -e
 
 # BASE_DIR should be in the current user's home directory
 BASE_DIR="$HOME/smc-scalp-signals"
-BACKUP_DIR="/home/evans/smc-backups/$(date +%Y-%m-%d_%H%M%S)"
+BACKUP_DIR="$HOME/smc-backups/$(date +%Y-%m-%d_%H%M%S)"
 REPO_URL="https://github.com/Evansgit254/smc-scalp-signals.git"
 
 echo "🚀 Starting Fresh Production Deployment..."
