@@ -769,7 +769,7 @@ async def get_signals(current_user: User = Depends(get_current_user)):
                 id, timestamp, symbol, direction, entry_price, sl, tp1, tp2, 
                 reasoning, timeframe, confidence, result, closed_at, max_tp_reached,
                 trade_type, quality_score, regime, expected_hold, risk_details, score_details,
-                forensic_candles, forensic_events
+                forensic_candles, forensic_events, gate_status, gate_reason
             FROM signals 
             ORDER BY timestamp DESC LIMIT 50
         """)

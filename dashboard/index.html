@@ -325,8 +325,9 @@
             <!-- View: Monitor -->
             <div id="monitor-view" style="display: none; flex-direction: column; height: 100%;">
                 <div class="panel-header" style="justify-content: space-between;">
-                    <span class="label-caps">Kernel Runtime Logs</span>
-                    <select id="log-service-select" onchange="loadLogs()" style="background: transparent; border: none; color: var(--acc-cyan); font-family: 'JetBrains Mono'; font-size: 10px; cursor: pointer;">
+                    <span class="label-caps">Alpha Core Kernel Logs</span>
+                    <select id="log-service" class="mono text-xs" style="background:transparent; border:1px solid var(--border-color); color:var(--text-tertiary);" onchange="loadLogs()">
+                        <option value="smc-alpha-kernel">ALPHA_KERNEL</option>
                         <option value="smc-signal-service">SIGNAL_SERVICE</option>
                         <option value="smc-admin-dashboard">ADMIN_DASHBOARD</option>
                         <option value="smc-interactive-bot">BOT_GATEWAY</option>
@@ -357,6 +358,48 @@
                 <div class="chart-card">
                    <h3 class="label-caps" style="color: var(--acc-amber); margin-bottom: 20px;">Kernel Alpha Modules</h3>
                    <div id="strategy-toggles-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;"></div>
+                </div>
+            </div>
+
+            <!-- View: Backtest (Integrated) -->
+            <div id="backtest-view" style="display: none; flex-direction: column; height: 100%; padding: 24px; overflow-y: auto;">
+                <div class="chart-card" style="margin-bottom: 24px; border: 1px solid var(--acc-amber); background: rgba(255, 191, 0, 0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                        <div>
+                            <h2 class="label-caps" style="color: var(--acc-amber); font-size: 14px; margin-bottom: 4px;">Institutional Backtesting Engine (v32.0)</h2>
+                            <p class="text-xs text-tertiary">Run historical simulations through the actual institutional alpha core logic.</p>
+                        </div>
+                        <button onclick="runBacktest()" id="bt-run-btn" class="btn btn-primary" style="background: var(--acc-amber); border-color: var(--acc-amber); padding: 8px 16px;">START_SIMULATION</button>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+                    <div class="chart-card">
+                        <h3 class="label-caps" style="margin-bottom: 16px;">Historical Runs</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>DATE</th>
+                                    <th>TRADES</th>
+                                    <th>WIN RATE</th>
+                                    <th style="text-align: right;">NET PIPS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bt-runs-body">
+                                <!-- Loaded from /api/backtest/runs -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="chart-card">
+                        <h3 class="label-caps" style="margin-bottom: 16px;">Active Progress</h3>
+                        <div id="bt-progress-container" style="display: none;">
+                            <div style="background: rgba(255,191,0,0.1); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
+                                <div id="bt-progress-bar" style="height: 100%; background: var(--acc-amber); width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                            <div class="mono text-xs" style="text-align: center; color: var(--acc-amber);">SIMULATING: <span id="bt-progress-text">0%</span></div>
+                        </div>
+                        <div id="bt-idle-text" class="text-xs text-tertiary" style="text-align: center; padding: 40px 0;">NO ACTIVE SIMULATION</div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -586,6 +629,16 @@
             });
             const targetEl = document.getElementById(view + '-view');
             if (targetEl) targetEl.style.display = 'flex';
+
+            // Active Tab Highlighting
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+                item.style.color = 'var(--text-secondary)';
+                if (item.getAttribute('onclick')?.includes(`'${view}'`)) {
+                    item.classList.add('active');
+                    item.style.color = view === 'logout' ? 'var(--acc-crimson)' : 'var(--acc-cyan)';
+                }
+            });
             
             if (view === 'performance') loadAnalytics();
             if (view === 'monitor') loadLogs();
@@ -670,13 +723,13 @@
                     const gateLabel = sig.gate_status || 'N/A';
                     
                     row.innerHTML = `
-                        <td class="mono" style="font-size: 11px;">${sig.timestamp.split(' ')[1]}</td>
+                        <td class="mono" style="font-size: 11px;">${sig.timestamp ? sig.timestamp.split(' ')[1] : '00:00:00'}</td>
                         <td class="mono font-bold">${sig.symbol}</td>
                         <td class="mono text-xs text-tertiary">${sig.strategy_type}</td>
                         <td class="mono" style="color: ${color}; font-weight: 700;">${sig.direction}</td>
-                        <td class="mono">${sig.entry.toFixed(5)}</td>
-                        <td class="mono text-tertiary">${sig.sl.toFixed(5)}</td>
-                        <td class="mono">${sig.tp1.toFixed(5)}</td>
+                        <td class="mono">${(sig.entry_price || 0).toFixed(5)}</td>
+                        <td class="mono text-tertiary">${(sig.sl || 0).toFixed(5)}</td>
+                        <td class="mono">${(sig.tp1 || 0).toFixed(5)}</td>
                         <td><span class="badge" style="border-color: ${gateColor}; color: ${gateColor}; font-size: 9px;">${gateLabel}</span></td>
                         <td class="mono text-right" style="color: ${resColor};">${sig.result || 'PENDING'}</td>
                     `;
@@ -763,28 +816,33 @@
                 document.getElementById('ana-crt-sum').innerText = `CRT: ${crt.wins}/${crt.total} (${crt.total > 0 ? Math.round(crt.wins/crt.total*100) : 0}% WR)`;
                 document.getElementById('ana-pattern-sum').innerText = `PATTERN: ${pattern.wins}/${pattern.total} (${pattern.total > 0 ? Math.round(pattern.wins/pattern.total*100) : 0}% WR)`;
 
-                // Matrix
+                // Matrix Logic (V23.5: Handling breakdown list)
                 const matrixBody = document.getElementById('strategy-matrix-body');
                 const matrixHead = document.getElementById('matrix-head');
-                matrixBody.innerHTML = '';
-                
-                const strategies = Object.keys(data.matrix || {}).filter(s => s !== 'ASSET');
-                matrixHead.innerHTML = `<tr><th>ASSET</th>${strategies.map(s => `<th>${s}</th>`).join('')}</tr>`;
-                
-                const assets = [...new Set(Object.values(data.matrix).flatMap(v => Object.keys(v)))];
-                assets.forEach(asset => {
-                    let row = `<tr><td class="mono font-bold">${asset}</td>`;
-                    strategies.forEach(s => {
-                        const val = data.matrix[s][asset] || '0/0';
-                        row += `<td class="mono text-xs">${val}</td>`;
+                if (matrixBody && matrixHead) {
+                    matrixBody.innerHTML = '';
+                    
+                    const breakdown = data.strategy_symbol_breakdown || [];
+                    const strategies = [...new Set(breakdown.map(b => b.trade_type))];
+                    const assets = [...new Set(breakdown.map(b => b.symbol))];
+                    
+                    matrixHead.innerHTML = `<tr><th>ASSET</th>${strategies.map(s => `<th>${s}</th>`).join('')}</tr>`;
+                    
+                    assets.forEach(asset => {
+                        let row = `<tr><td class="mono font-bold">${asset}</td>`;
+                        strategies.forEach(s => {
+                            const entry = breakdown.find(b => b.symbol === asset && b.trade_type === s);
+                            const val = entry ? `${entry.wins}/${entry.total}` : '0/0';
+                            row += `<td class="mono text-xs">${val}</td>`;
+                        });
+                        row += '</tr>';
+                        matrixBody.innerHTML += row;
                     });
-                    row += '</tr>';
-                    matrixBody.innerHTML += row;
-                });
+                }
 
                 // Bias
-                const buys = data.bias['BUY'] || 0;
-                const sells = data.bias['SELL'] || 0;
+                const buys = (data.bias || {})['BUY'] || 0;
+                const sells = (data.bias || {})['SELL'] || 0;
                 const total = buys + sells;
                 const buyPct = total > 0 ? Math.round((buys/total)*100) : 50;
                 document.getElementById('bias-stroke').setAttribute('stroke-dasharray', `${buyPct}, 100`);
@@ -904,7 +962,7 @@
 
         // LOGS ENGINE
         async function loadLogs() {
-            const service = document.getElementById('log-service-select').value;
+            const service = document.getElementById('log-service').value;
             try {
                 const res = await apiFetch(`/api/logs/${service}`);
                 const data = await res.json();
@@ -921,16 +979,16 @@
                 body.innerHTML = '';
                 clients.forEach(c => {
                     const row = document.createElement('tr');
-                    const tierColor = c.tier === 'GOLD' ? 'var(--acc-amber)' : 'var(--text-secondary)';
+                    const tierColor = c.subscription_tier === 'GOLD' ? 'var(--acc-amber)' : 'var(--text-secondary)';
                     row.innerHTML = `
-                        <td class="mono">${c.chat_id}</td>
-                        <td class="mono">$${c.balance.toFixed(2)}</td>
-                        <td><span class="badge" style="border: 1px solid ${tierColor}; color: ${tierColor};">${c.tier}</span></td>
-                        <td class="mono text-xs">${c.expiry || 'N/A'}</td>
-                        <td class="mono text-xs">${c.total_signals}</td>
+                        <td class="mono">${c.telegram_chat_id}</td>
+                        <td class="mono">$${(c.account_balance || 0).toFixed(2)}</td>
+                        <td><span class="badge" style="border: 1px solid ${tierColor}; color: ${tierColor};">${c.subscription_tier || 'BASIC'}</span></td>
+                        <td class="mono text-xs">${c.subscription_expiry || 'N/A'}</td>
+                        <td class="mono text-xs">${c.total_signals || 0}</td>
                         <td class="text-right">
                             <i class="fas fa-edit text-cyan" style="cursor: pointer; margin-right: 12px;" onclick="editClient(${JSON.stringify(c).replace(/"/g, '&quot;')})"></i>
-                            <i class="fas fa-trash text-crimson" style="cursor: pointer;" onclick="deleteClient(${c.chat_id})"></i>
+                            <i class="fas fa-trash text-crimson" style="cursor: pointer;" onclick="deleteClient('${c.telegram_chat_id}')"></i>
                         </td>
                     `;
                     body.appendChild(row);
@@ -939,9 +997,9 @@
         }
 
         function editClient(client) {
-            document.getElementById('edit-chat-id').value = client.chat_id;
-            document.getElementById('edit-balance').value = client.balance;
-            document.getElementById('edit-tier').value = client.tier;
+            document.getElementById('edit-chat-id').value = client.telegram_chat_id;
+            document.getElementById('edit-balance').value = client.account_balance;
+            document.getElementById('edit-tier').value = client.subscription_tier || 'BASIC';
             document.getElementById('edit-modal').style.display = 'flex';
         }
 
@@ -955,9 +1013,9 @@
 
             try {
                 const res = await apiFetch(`/api/clients/${chatId}`, {
-                    method: 'PUT',
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ balance: parseFloat(balance), tier: tier, extend_days: parseInt(days || 0) })
+                    body: JSON.stringify({ account_balance: parseFloat(balance), tier: tier, subscription_days: parseInt(days || 0) })
                 });
                 if (res.ok) {
                     showToast("CLIENT_SYNC_SUCCESS");
@@ -1435,56 +1493,7 @@
                     </div>
                 </div>
             </div>
-                <div class="nav-item" style="cursor: pointer; display: flex; gap: 10px; align-items: center; color: var(--text-secondary);" onclick="showView('backtest')">
-                    <i class="fas fa-history"></i> <span class="label-caps" style="color: inherit;">Backtest</span>
-                </div>
-                <div class="nav-item" onclick="logout()" style="margin-top: 24px; cursor: pointer; display: flex; gap: 10px; align-items: center; color: var(--acc-crimson);">
-                    <i class="fas fa-power-off"></i> <span class="label-caps" style="color: inherit;">Logout</span>
-                </div>
-            </nav>
-        </aside>
-
-        <!-- Main Workspace -->
-        <main class="main-content">
-            <!-- View: Signal Feed -->
-            <div id="signals-view" style="display: flex; flex-direction: column; height: 100%;">...</div>
-            <div id="clients-view" style="display: none; flex-direction: column; height: 100%;">...</div>
-            <div id="performance-view" style="display: none; flex-direction: column; height: 100%; padding: 24px; overflow-y: auto;">...</div>
-            <div id="monitor-view" style="display: none; flex-direction: column; height: 100%;">...</div>
-            <div id="settings-view" style="display: none; flex-direction: column; height: 100%; padding: 24px; overflow-y: auto;">...</div>
-            
-            <div id="backtest-view" style="display: none; flex-direction: column; height: 100%; padding: 24px; overflow-y: auto;">
-                <div class="chart-card" style="margin-bottom: 24px; border: 1px solid var(--acc-amber); background: rgba(255, 191, 0, 0.03);">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-                        <div>
-                            <h2 class="label-caps" style="color: var(--acc-amber); font-size: 14px; margin-bottom: 4px;">Institutional Backtesting Engine (v32.0)</h2>
-                            <p class="text-xs text-tertiary">Run historical simulations through the actual institutional alpha core logic.</p>
-                        </div>
-                        <button onclick="runBacktest()" id="bt-run-btn" class="btn btn-primary" style="background: var(--acc-amber); border-color: var(--acc-amber); padding: 8px 16px;">START_SIMULATION</button>
-                    </div>
-                </div>
-                <!-- ... other components ... -->
-            </div>
-        </main>
+        </div>
     </div>
-    
-    <script>
-        async function loadBacktestRuns() {
-            const res = await apiFetch('/api/backtest/runs').then(r => r.json());
-            const body = document.getElementById('bt-runs-body');
-            if (body) {
-                body.innerHTML = res.map(run => `
-                    <tr onclick="loadBacktestDetail(${run.id})" style="cursor: pointer;">
-                        <td class="mono">${run.timestamp.split('T')[0]}</td>
-                        <td class="mono">${run.total_trades}</td>
-                        <td class="mono" style="color: var(--acc-emerald);">${run.win_rate.toFixed(1)}%</td>
-                        <td class="mono" style="text-align: right; color: ${run.net_pips >= 0 ? 'var(--acc-emerald)' : 'var(--acc-red)'};">${run.net_pips.toFixed(1)}</td>
-                    </tr>
-                `).join('');
-            }
-        }
-        // ... (remaining scripts)
-    </script>
 </body>
-
 </html>
