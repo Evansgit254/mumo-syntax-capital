@@ -68,16 +68,32 @@ echo "⚙️  Deploying systemd services..."
 mkdir -p ~/.config/systemd/user
 # Refine paths in service files during deployment
 for srv in smc-*.service; do
-    sed -i "s|WorkingDirectory=.*|WorkingDirectory=$BASE_DIR|g" "$srv"
-    sed -i "s|Environment=\"PYTHONPATH=.*|Environment=\"PYTHONPATH=$BASE_DIR\"|g" "$srv"
     local_script=""
-    if [[ "$srv" == *"signal-service"* ]]; then local_script="signal_service.py"; fi
-    if [[ "$srv" == *"bot"* ]]; then local_script="app/interactive_bot.py"; fi
-    if [[ "$srv" == *"tracker"* ]]; then local_script="signal_tracker.py"; fi
-    if [[ "$srv" == *"dashboard"* ]]; then local_script="admin_server.py"; fi
+    local_desc=""
+    if [[ "$srv" == *"signal-service"* ]]; then local_script="signal_service.py"; local_desc="SMC Signal Service"; fi
+    if [[ "$srv" == *"bot"* ]]; then local_script="app/interactive_bot.py"; local_desc="SMC Interactive Bot"; fi
+    if [[ "$srv" == *"tracker"* ]]; then local_script="signal_tracker.py"; local_desc="SMC Signal Tracker"; fi
+    if [[ "$srv" == *"dashboard"* ]]; then local_script="admin_server.py"; local_desc="SMC Admin Dashboard"; fi
     
     if [ -n "$local_script" ]; then
-        sed -i "s|ExecStart=.*|ExecStart=$BASE_DIR/venv/bin/python $BASE_DIR/$local_script|g" "$srv"
+        cat <<EOF > "$srv"
+[Unit]
+Description=$local_desc
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$BASE_DIR
+Environment="PYTHONPATH=$BASE_DIR"
+ExecStart=$BASE_DIR/venv/bin/python $BASE_DIR/$local_script
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+EOF
     fi
     
     cp "$srv" ~/.config/systemd/user/
