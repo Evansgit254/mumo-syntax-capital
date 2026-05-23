@@ -11,35 +11,20 @@ NARRATIVE_TF = "1h"
 INSTITUTIONAL_TF = "4h"
 STRUCTURE_TF = "15m"
 ENTRY_TF = "5m" # Switched to 5m for better intraday consistency
-SCALP_TF = "1m"
-
-# CRT settings (OBSOLETE - REMOVED)
-
-# INDICATORS
-EMA_TREND = 100 # Optimized from 200
-EMA_FAST = 20
-EMA_SLOW = 50
-RSI_PERIOD = 14
-ATR_PERIOD = 14
-ATR_AVG_PERIOD = 50
-ATR_MULTIPLIER = 1.8 # Optimized from 1.5 for better manipulation clearance
-ADR_PERIOD = 20 # Standard 20-day Average Daily Range
-ADR_THRESHOLD_PERCENT = 0.95 # Rebalanced from 0.90 for V5.0
-POC_LOOKBACK = 200 # Bars for Volume Profile POC calculation
-# LIQUIDITY (OBSOLETE - REMOVED)
-
-# ENTRY & EXIT TUNING (V13.0)
-BE_TRIGGER_ATR = 1.8 # Widened from 1.5 (Alpha Remediation v19.3)
-PARTIAL_TP_ATR = 0.75 # Widened from 0.5
-PARTIAL_SIZE = 0.5 # Close 50% at partial TP
-
-# DISPLACEMENT (OBSOLETE - REMOVED)
-
 # RSI THRESHOLDS
 RSI_BUY_LOW = 25
 RSI_BUY_HIGH = 40
 RSI_SELL_LOW = 60
 RSI_SELL_HIGH = 75
+
+# INDICATOR PERIODS (V31.1 Recovery)
+EMA_FAST = 20
+EMA_SLOW = 50
+EMA_TREND = 200
+RSI_PERIOD = 14
+ATR_PERIOD = 14
+ATR_AVG_PERIOD = 5
+ADR_PERIOD = 14
 
 # TELEGRAM
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -91,30 +76,30 @@ MAX_CONCURRENT_TRADES = int(os.getenv("MAX_CONCURRENT_TRADES", "4"))  # Increase
 MAX_CURRENCY_EXPOSURE = int(os.getenv("MAX_CURRENCY_EXPOSURE", "2"))  # Increased from 1
 MIN_LOT_SIZE = 0.01
 USE_KELLY_SIZING = os.getenv("USE_KELLY_SIZING", "false").lower() == "true"  # Dynamic sizing
-MIN_QUALITY_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.0"))  # V25.0 Hedge: Raised from 5.0 (backtest: +0.120R)
-MIN_QUALITY_SCORE_INTRADAY = float(os.getenv("MIN_QUALITY_SCORE_INTRADAY", "7.0"))  # Match global for consistency
+MIN_QUALITY_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.0"))
+MIN_QUALITY_SCORE_INTRADAY = 5.0
+ATR_MULTIPLIER = 2.0
 
 # EXECUTION REALISM (V18.1 Audit)
 SPREAD_PIPS = 0.8 # Average Retail Spread
-SLIPPAGE_PIPS = 0.2 # Expected Scalp Slippage
+SLIPPAGE_PIPS = 0.2 # Expected Execution Slippage
 
 # DATABASE PATHS (V22.7.5)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_CLIENTS = os.path.join(BASE_DIR, "database/clients.db")
 DB_SIGNALS = os.path.join(BASE_DIR, "database/signals.db")
-
 # V22.2 PER-SYMBOL ALPHA WEIGHTS (IC-Derived from 60-day analysis)
 # Format: { symbol: { regime: { factor: weight } } }
-# Only TRENDING regime is customized — RANGING/CHOPPY use global defaults.
 SYMBOL_ALPHA_WEIGHTS = {
     "EURUSD=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
     "GBPUSD=X": {"TRENDING": {"velocity": 0.2, "zscore": 0.5, "momentum": 0.2, "volatility": 0.1}},
     "USDJPY=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
-    "NZDUSD=X": {"TRENDING": {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1}},  # No IC data — balanced
-    "AUDUSD=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.7, "momentum": 0.1, "volatility": 0.1}},  # Z-Score IC=0.36
+    "NZDUSD=X": {"TRENDING": {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1}},
+    "AUDUSD=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.7, "momentum": 0.1, "volatility": 0.1}},
     "GBPJPY=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
-    "GC=F":     {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.1, "volatility": 0.7}},  # Mom-Inv (contrarian)
+    "GC=F":     {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.1, "volatility": 0.7}},
     "CL=F":     {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
-    "BTC-USD":  {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},  # V25.0: Momentum-first (was zscore 0.6)
+    "BTC-USD":  {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
 }
+
 

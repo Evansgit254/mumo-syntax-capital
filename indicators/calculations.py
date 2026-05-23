@@ -29,6 +29,14 @@ class IndicatorCalculator:
         # ATR
         df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=ATR_PERIOD)
         
+        # ADX (Average Directional Index) for trend strength
+        # pandas_ta_classic: adx(high, low, close, length) -> returns DF with ADX, DIP, DIN
+        adx_df = ta.adx(df['high'], df['low'], df['close'], length=14)
+        if adx_df is not None:
+            df['adx'] = adx_df['ADX_14']
+            df['di_plus'] = adx_df['DMP_14']
+            df['di_minus'] = adx_df['DMN_14']
+        
         # ATR Average for volatility filter
         df['atr_avg'] = df['atr'].rolling(window=ATR_AVG_PERIOD).mean()
         df['atr_ma_20'] = df['atr'].rolling(window=20).mean() # Restored for Price Action

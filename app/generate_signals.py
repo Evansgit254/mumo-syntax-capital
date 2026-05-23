@@ -3,7 +3,6 @@ from datetime import datetime
 from config.config import SYMBOLS
 from data.fetcher import DataFetcher
 from indicators.calculations import IndicatorCalculator
-from strategies.intraday_quant_strategy import IntradayQuantStrategy
 from strategies.crt_strategy import CRTStrategy
 from strategies.session_clock_strategy import SessionClockStrategy
 from strategies.advanced_pattern_strategy import AdvancedPatternStrategy
@@ -53,7 +52,6 @@ async def generate_signals():
     
     fetcher = DataFetcher()
     client_manager = ClientManager()
-    intraday_strategy = IntradayQuantStrategy()
     crt_strategy = CRTStrategy()  # Replaces Swing (V28.0: CRT — Candle Range Theory)
     clock_strategy = SessionClockStrategy()
     advanced_strategy = AdvancedPatternStrategy()
@@ -82,7 +80,7 @@ async def generate_signals():
     news_events = []
     try:
         news_fetcher = NewsFetcher()
-        news_events = await news_fetcher.get_upcoming_events() if hasattr(news_fetcher, 'get_upcoming_events') else []
+        news_events = news_fetcher.get_upcoming_events() if hasattr(news_fetcher, 'get_upcoming_events') else []
     except Exception as e:
         # News fetching is optional
         pass
@@ -121,12 +119,6 @@ async def generate_signals():
                 if gold_signal:
                     all_signals.append(('GOLD_QUANT', gold_signal))
                 continue  # Skip all forex strategies for GC=F
-            
-            # Generate intraday signal with context (toggle: strategy_scalp)
-            if _is_strategy_enabled("strategy_scalp"):
-                intraday_signal = await intraday_strategy.analyze(symbol, data_bundle, news_events, market_context)
-                if intraday_signal:
-                    all_signals.append(('INTRADAY', intraday_signal))
             
             # V28.0: CRT Strategy — ALWAYS ON (locked)
             crt_signal = await crt_strategy.analyze(symbol, data_bundle, news_events, market_context)

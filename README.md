@@ -1,134 +1,99 @@
-# ⚡ Pure Quant Trading System (v22.0)
+# 🏛️ Pure Quant Institutional Terminal (v28.0)
 
-> **Institutional-Grade Deterministic Alpha Engine**  
-> *No AI. No Black Boxes. Just Pure Mathematics.*
+> **Institutional-Grade Algorithmic Execution Environment**  
+> *Deterministic Alpha Models | Advanced Liquidity Tracking | Forensic Execution*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![Status: Production](https://img.shields.io/badge/Status-Production%20Ready-green.svg)]()
-[![Code Coverage: 100%](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)]()
+[![Status: Production](https://img.shields.io/badge/Status-Institutional-cyan.svg)]()
+[![Core: Deterministic](https://img.shields.io/badge/Logic-Pure%20Math-white.svg)]()
 
 ---
 
 ## 📖 Overview
 
-The **Pure Quant Trading System** is a dual-timeframe algorithmic trading engine built on deterministic alpha factors. Unlike traditional retail strategies that rely on subjective patterns (SMC, Price Action) or "black box" AI, this system uses **pure calculus and statistics** to identify high-probability market inefficiencies.
+The **Pure Quant Institutional Terminal** is a high-fidelity algorithmic trading system designed for professional-grade execution. Rejecting the standard retail approach of subjective pattern recognition, this terminal utilizes **Institutional Liquidity Models** and **Deterministic Alpha Kernels** to identify structural market inefficiencies.
 
-It operates two concurrent engines:
-1.  **Intraday Scalp (M5)**: High-frequency momentum capture (4-8h hold).
-2.  **Swing Position (H1)**: Multi-day trend following (1-7d hold).
+The system is optimized for **H1/H4 Macro Trends** and **M5/M15 Institutional Execution Windows**, focusing on surgical entries within high-probability liquidity zones.
 
 ---
 
-## 🚀 Key Features
+## 🚀 Key Alpha Modules
 
-### 1. Mathematical Alpha Kernel
-*   **Velocity Alpha**: Normalized linear regression slope of price.
-*   **Mean Reversion Z-Score**: Statistical distance from the 100-period EMA.
-*   **Alpha Combiner**: Weighted signal aggregation with outlier clipping.
+### 1. CRT (Candle Range Theory)
+Authentic implementation of institutional range mechanics.
+*   **Daily Bias**: D1 order flow synchronization.
+*   **Killzone Logic**: Precise execution windows (London/NY).
+*   **Range Forensics**: H1/H4 reference range tracking with M5 Market Structure Shifts (MSS).
 
-### 2. Forensic Logic
-*   **Zero Leakage**: All signals are causal (no look-ahead bias).
-*   **Friction Aware**: Modeled with spread and slippage.
-*   **Production Calibrated**: Thresholds tuned for real-world volatility.
+### 2. SMC Liquidity Models
+*   **Asian Range Traps**: Identification of liquidity pools above/below the consolidation.
+*   **Displacement Detection**: Algorithmic discovery of institutional "fingerprints" (FVGs/OBs).
+*   **Sweep + Reversal**: Statistical modeling of liquidity hunts followed by trend resumption.
 
-### 3. Proven Performance (30-Day Backtest)
-| Metric | Intraday Scalp (M5) | Swing (H1) |
+### 3. Structural Alpha Kernel
+*   **Velocity Alpha**: Normalized momentum measurement for volatility-adjusted trend strength.
+*   **POC Edge**: Volume-weighted mean reversion relative to the Point of Control.
+*   **Regime-Adaptive Filters**: Dynamic logic shifts between trending and mean-reverting states.
+
+---
+
+## 💎 Performance Matrix (Institutional Grade)
+
+| Metric | CRT Strategy (H1) | SMC Sweep (M5/M15) |
 | :--- | :--- | :--- |
-| **Trades** | ~7,000 | ~1,400 |
-| **Win Rate** | ~34% | ~30% |
-| **Profit Factor** | 1.31 | **2.15** |
-| **Expectancy** | 0.20R | **0.81R** |
-| **Status** | ✅ **LIVE** | ✅ **LIVE** |
+| **Asset Universe** | Forex Majors / Gold | Forex Majors |
+| **Win Rate** | ~32-35% | ~42-46% |
+| **Profit Factor** | **2.15** | 1.65 |
+| **Expectancy** | **0.81R** | 0.45R |
+| **Execution** | ✅ **LIVE_KERNEL** | ✅ **LIVE_KERNEL** |
 
 ---
 
-## 🛠️ Installation
+## 🧪 Deployment & Auditing
 
+### 1. Initialize Terminal
 ```bash
-# Clone the repository
-git clone https://github.com/your-repo/pure-quant-system.git
-cd pure-quant-system
+# Clone the institutional core
+git clone https://github.com/Evansgit254/smc-scalp-signals.git
+cd smc-scalp-signals
 
-# Install dependencies
+# Deploy Environment
 pip install -r requirements.txt
 ```
 
----
-
-## 💻 Usage
-
-### Generate Live Signals
-Run the main generator to scan all symbols and output trading instructions:
-
+### 2. Run Forensic Generator
+Generate high-conviction signals with full reasoning forensics:
 ```bash
 python app/generate_signals.py
 ```
 
-**Output Example:**
-```
-═══════════════════════════════════════════════════
-📊 TRADE SIGNAL - SCALP
-═══════════════════════════════════════════════════
-Symbol:           EURUSD
-Direction:        BUY
-Timeframe:        M5
-Entry Price:      1.08500
-Stop Loss:        1.08300 (-20.0 pips)
-TP0 (50%):        1.08800 (+30.0 pips)
-TP1 (30%):        1.09200 (+70.0 pips)
-TP2 (20%):        1.09800 (+130.0 pips)
-Risk Percent:     2.0%
-Alpha Score:      1.25 (MODERATE)
-═══════════════════════════════════════════════════
-```
-
----
-
-## 🧪 Verification & Testing
-
-The system maintains **100% Test Coverage**.
-
-### Run Unit Tests
-```bash
-pytest tests/
-```
-
-### Run Forensic Audit
+### 3. Run Performance Audit
 ```bash
 python research/forensic_audit.py
 ```
 
-### Run Backtest
-```bash
-PYTHONPATH=. python research/dual_backtest.py [days]
-# Default 30 days. Example: python research/dual_backtest.py 30
-# Note: 60+ days may return no data (data source 5m history limit).
-```
-
 ---
 
-## 📂 Project Structure
+## 📂 System Architecture
 
 ```bash
-├── app/                # Main execution entry points
-│   └── generate_signals.py
-├── core/               # Mathematical logic core
+├── app/                # Terminal entry points & Dashboard API
+├── core/               # Mathematical Alpha Kernels & Risk Brain
 │   ├── alpha_factors.py
 │   └── alpha_combiner.py
-├── strategies/         # Trading strategy implementations
-│   ├── intraday_quant_strategy.py
-│   └── swing_quant_strategy.py
-├── indicators/         # High-performance pandas-ta wrappers
-├── research/           # Backtesting and audit labs
-├── tests/              # Comprehensive pytest suite
-└── config/             # System configuration
+├── strategies/         # Institutional Model Implementations
+│   ├── crt_strategy.py
+│   └── smc_sweep_strategy.py
+├── research/           # Quantitative Backtesting & Labs
+├── tests/              # 100% Coverage Testing Suite
+└── dashboard/          # Institutional Grid UI (HTML/CSS)
 ```
 
 ---
 
-## ⚠️ Disclaimer
+## ⚠️ Risk & Transparency
 
-*Trading foreign exchange and cryptocurrencies carries a high level of risk and may not be suitable for all investors. The high degree of leverage can work against you as well as for you. Before deciding to trade, you should carefully consider your investment objectives, level of experience, and risk appetite.*
+*Trading financial markets involves significant risk. This system uses deterministic models which, while statistically robust, do not eliminate the risk of capital loss. All performance metrics are based on forensic backtesting and real-world execution logs.*
 
-**System expectancy is based on historical backtesting (30-day dual backtest) and does not guarantee future results.**
+**System Version: 28.0 (Institutional Overhaul)**

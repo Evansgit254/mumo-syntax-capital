@@ -188,25 +188,35 @@ class SignalService:
                 if 'reasoning' not in signal_data:
                     signal_data['reasoning'] = SignalFormatter.generate_reasoning(signal_data)
                 
-                # V17.2: Log to database FIRST for dashboard reliability (V28.1 fix)
-                # This ensures the signal appears in performance tables even if Telegram fails.
+                # V31.0: Execution Gate — validate before any action
+                from core.execution_gate import ExecutionGate
+                from config.config import DB_SIGNALS, DB_CLIENTS
+                gate_result = ExecutionGate.validate(signal_data, DB_SIGNALS, DB_CLIENTS)
+                signal_data['gate_status'] = gate_result['status']
+                signal_data['gate_reason'] = gate_result['reason']
+                
+                gate_tag = "🟢 PASSED" if gate_result['status'] == 'PASSED' else f"🔴 BLOCKED ({gate_result['reason']})"
+                print(f"  ⛩️  Gate: {signal_data.get('symbol')} → {gate_tag}")
+
+                # V17.2: Log to database FIRST for dashboard reliability
                 self._log_to_database(signal_data)
                 self._mark_sent(signal_data)
                 
-                # Broadast after logging
+                # Broadcast after logging
                 await self.telegram.broadcast_personalized_signal(signal_data)
 
-                # V29.0: MT5 Auto-Trade Execution (paper mode by default)
-                from config.config import MT5_AUTO_TRADE
-                if MT5_AUTO_TRADE:
-                    try:
-                        from core.trade_executor import get_executor
-                        executor = get_executor()
-                        trade_result = await executor.execute_trade(signal_data)
-                        mode_tag = "📝 PAPER" if trade_result.get("status") == "paper" else "✅ LIVE"
-                        print(f"  {mode_tag} Trade: {signal_data.get('direction')} {signal_data.get('symbol')} → {trade_result.get('status')}")
-                    except Exception as te:
-                        print(f"  ⚠️  Trade execution error: {te}")
+                # V31.0: Only execute trades that PASS the gate
+                if gate_result['status'] == 'PASSED':
+                    from config.config import MT5_AUTO_TRADE
+                    if MT5_AUTO_TRADE:
+                        try:
+                            from core.trade_executor import get_executor
+                            executor = get_executor()
+                            trade_result = await executor.execute_trade(signal_data)
+                            mode_tag = "📝 PAPER" if trade_result.get("status") == "paper" else "✅ LIVE"
+                            print(f"  {mode_tag} Trade: {signal_data.get('direction')} {signal_data.get('symbol')} → {trade_result.get('status')}")
+                        except Exception as te:
+                            print(f"  ⚠️  Trade execution error: {te}")
 
                 sent_count += 1
 
@@ -290,9 +300,10 @@ class SignalService:
                 INSERT INTO signals (
                     timestamp, symbol, direction, entry_price, 
                     sl, tp0, tp1, tp2, reasoning, timeframe, confidence,
-                    trade_type, quality_score, regime, expected_hold, risk_details, score_details
+                    trade_type, quality_score, regime, expected_hold, risk_details, score_details,
+                    forensic_candles, forensic_events, gate_status, gate_reason
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 datetime.now().isoformat(),
                 signal_data.get('symbol', 'UNKNOWN'),
@@ -302,16 +313,19 @@ class SignalService:
                 signal_data.get('tp0', 0.0),
                 signal_data.get('tp1', 0.0),
                 signal_data.get('tp2', 0.0),
-                signal_data.get('reasoning', '')[:5000],  # Increased limit for full reasoning
+                signal_data.get('reasoning', '')[:5000],
                 signal_data.get('timeframe', 'M5'),
                 signal_data.get('confidence', 0.0),
-                # New Fields
-                signal_data.get('trade_type', 'SCALP'),
+                signal_data.get('trade_type', 'INSTITUTIONAL'),
                 signal_data.get('quality_score', 0.0),
                 signal_data.get('regime', 'UNKNOWN'),
                 signal_data.get('expected_hold', 'UNKNOWN'),
                 risk_json,
-                score_json
+                score_json,
+                json.dumps(sanitize_for_json(signal_data.get('forensic_candles', []))),
+                json.dumps(sanitize_for_json(signal_data.get('forensic_events', []))),
+                signal_data.get('gate_status', 'UNKNOWN'),
+                signal_data.get('gate_reason', 'UNKNOWN')
             ))
             conn.commit()
         except Exception as e:
@@ -337,8 +351,7 @@ class SignalService:
         print("="*60)
         
         if not self.telegram.bot:
-            print("❌ FATAL: Telegram not configured. Check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID")
-            return
+            print("⚠️  WARNING: Telegram not configured. Signals will be generated but not broadcast.")
         
         while self.running:
             try:

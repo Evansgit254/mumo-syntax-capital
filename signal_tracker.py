@@ -14,6 +14,20 @@ import sys
 DB_PATH = "database/signals.db"
 TRACKING_INTERVAL = 120  # Check every 2 minutes
 
+def calculate_pips(symbol, entry, exit, direction):
+    """V31.0: Precise institutional pip calculation."""
+    try:
+        # Check if JPY pair
+        multiplier = 100 if "JPY" in symbol else 10000
+        # Check if Gold/Oil/Crypto (usually 2-digits or 1-digit)
+        if any(x in symbol for x in ["XAU", "GOLD", "GC=F", "XAG"]): multiplier = 10 
+        if any(x in symbol for x in ["BTC", "ETH"]): multiplier = 1
+        
+        diff = (exit - entry) if direction == 'BUY' else (entry - exit)
+        return round(diff * multiplier, 1)
+    except:
+        return 0.0
+
 class SignalTracker:
     def __init__(self):
         self.running = True
@@ -118,13 +132,33 @@ class SignalTracker:
                         status_str = new_result
                     else:
                         status_str = f"OPEN (Hit TP{new_max_tp}, SL moved to {new_sl:.5f})"
+
+                    # V31.0: Settlement Logic (Pips & Paper Account)
+                    pips = 0.0
+                    if new_result != 'OPEN':
+                        pips = calculate_pips(symbol, entry, current_price, direction)
                         
-                    print(f"🎯 UPDATING {symbol} {direction}: {status_str} at {current_price:.5f}")
+                    print(f"🎯 UPDATING {symbol} {direction}: {status_str} at {current_price:.5f} ({pips} pips)")
+                    
                     conn.execute("""
                         UPDATE signals 
-                        SET result = ?, max_tp_reached = ?, closed_at = ?, sl = ?
+                        SET result = ?, max_tp_reached = ?, closed_at = ?, sl = ?, result_pips = ?
                         WHERE id = ?
-                    """, (new_result, new_max_tp, closed_at, new_sl, sig['id']))
+                    """, (new_result, new_max_tp, closed_at, new_sl, pips, sig['id']))
+                    
+                    # If this was a paper trade closure, update paper balance
+                    if new_result != 'OPEN' and sig.get('gate_status') == 'PASSED':
+                        # Mapping pips to dollars (Simplified: $10 per pip for a standard lot)
+                        import json
+                        lot_size = 0.1 # Default mini-lot
+                        try:
+                            rd = json.loads(sig['risk_details'])
+                            lot_size = rd.get('lot_size', 0.1)
+                        except: pass
+                        
+                        dollar_gain = pips * (lot_size * 10)
+                        conn.execute("UPDATE paper_account SET balance = balance + ?, equity = equity + ? WHERE id = 1", (dollar_gain, dollar_gain))
+                        
                     conn.commit()
 
         except Exception as e:

@@ -15,6 +15,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 import subprocess
 import time
+import asyncio
 from data.fetcher import DataFetcher
 from data.news_fetcher import NewsFetcher
 from indicators.calculations import IndicatorCalculator
@@ -41,12 +42,17 @@ market_context_cache = {
 
 app = FastAPI(title="Trading Expert Admin Dashboard")
 
+def get_db_connection(path):
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 # Restricted CORS for Security
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
@@ -84,17 +90,50 @@ def ensure_db_schema():
                 strategy TEXT,
                 result_price REAL,
                 result_pips REAL,
-                trade_type TEXT DEFAULT 'SCALP',
+                trade_type TEXT DEFAULT 'INSTITUTIONAL',
                 quality_score REAL DEFAULT 0.0,
                 regime TEXT DEFAULT 'UNKNOWN',
                 expected_hold TEXT DEFAULT 'UNKNOWN',
                 risk_details TEXT DEFAULT '{}',
-                score_details TEXT DEFAULT '{}'
+                score_details TEXT DEFAULT '{}',
+                forensic_candles TEXT DEFAULT '[]',
+                forensic_events TEXT DEFAULT '[]',
+                gate_status TEXT DEFAULT 'PASSED',
+                gate_reason TEXT DEFAULT 'PASSED'
             )
         """)
+        
+        # V31.0: Paper Account Tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS paper_account (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                balance REAL DEFAULT 100000.0,
+                equity REAL DEFAULT 100000.0,
+                last_daily_reset_date TEXT
+            )
+        """)
+        # Initialize if empty
+        cursor.execute("INSERT OR IGNORE INTO paper_account (id, balance, equity) VALUES (1, 100000.0, 100000.0)")
+        
         conn.commit()
 
-        # Required columns for High Fidelity Dashboard (migration for existing DBs)
+        # V29.0: Weight Overrides for dynamic AlphaCombiner
+        conn_conf = get_db_connection(DB_CLIENTS)
+        conn_conf.execute("""
+            CREATE TABLE IF NOT EXISTS weight_overrides (
+                event_type TEXT PRIMARY KEY,
+                multiplier REAL DEFAULT 1.0,
+                is_active INTEGER DEFAULT 1
+            )
+        """)
+        conn_conf.commit()
+        # V31.0: Seed default execution gates
+        conn_conf.execute("INSERT OR IGNORE INTO weight_overrides (event_type, multiplier) VALUES ('MIN_EXECUTION_QUALITY', 5.0)")
+        conn_conf.execute("INSERT OR IGNORE INTO weight_overrides (event_type, multiplier) VALUES ('MAX_DAILY_LOSS_PCT', 2.0)")
+        conn_conf.commit()
+        conn_conf.close()
+
+        # Required columns for High Fidelity Dashboard
         required_cols = [
             ("sl", "REAL DEFAULT 0.0"),
             ("tp0", "REAL DEFAULT 0.0"),
@@ -102,12 +141,18 @@ def ensure_db_schema():
             ("tp2", "REAL DEFAULT 0.0"),
             ("reasoning", "TEXT"),
             ("confidence", "REAL DEFAULT 0.0"),
-            ("trade_type", "TEXT DEFAULT 'SCALP'"),
+            ("trade_type", "TEXT DEFAULT 'INSTITUTIONAL'"),
             ("quality_score", "REAL DEFAULT 0.0"),
             ("regime", "TEXT DEFAULT 'UNKNOWN'"),
             ("expected_hold", "TEXT DEFAULT 'UNKNOWN'"),
             ("risk_details", "TEXT DEFAULT '{}'"),
-            ("score_details", "TEXT DEFAULT '{}'")
+            ("score_details", "TEXT DEFAULT '{}'"),
+            ("forensic_candles", "TEXT DEFAULT '[]'"),
+            ("forensic_events", "TEXT DEFAULT '[]'"),
+            ("gate_status", "TEXT DEFAULT 'UNKNOWN'"),
+            ("gate_reason", "TEXT DEFAULT 'UNKNOWN'"),
+            ("closed_at", "TEXT"),
+            ("max_tp_reached", "INTEGER DEFAULT 0")
         ]
         
         for col_name, col_def in required_cols:
@@ -146,10 +191,8 @@ def ensure_config_table():
             ("max_concurrent_trades", "4", "int"),
             ("min_quality_score", "5.0", "float"),
             ("news_filter_minutes", "30", "int"),
-            # Strategy toggles (CRT & ADVANCED_PATTERN are always on — not listed here)
             ("strategy_session_clock", "true", "bool"),
             ("strategy_smc_sweep", "true", "bool"),
-            ("strategy_scalp", "true", "bool"),
             ("strategy_poc_edge", "true", "bool"),
             ("strategy_stat_arb", "true", "bool"),
             ("strategy_pre_news", "true", "bool"),
@@ -360,7 +403,6 @@ ALWAYS_ON_STRATEGIES = {"crt", "advanced_pattern"}
 STRATEGY_META = {
     "session_clock":  {"name": "Session Clock",       "key": "strategy_session_clock"},
     "smc_sweep":      {"name": "SMC Liquidity Sweep",  "key": "strategy_smc_sweep"},
-    "scalp":          {"name": "Intraday Scalp",       "key": "strategy_scalp"},
     "poc_edge":       {"name": "Anchored POC Edge",    "key": "strategy_poc_edge"},
     "stat_arb":       {"name": "Statistical Arb",      "key": "strategy_stat_arb"},
     "pre_news":       {"name": "Pre-News Quant",       "key": "strategy_pre_news"},
@@ -724,9 +766,10 @@ async def get_signals(current_user: User = Depends(get_current_user)):
         # V18.0: Fetch all signal fidelity fields
         cursor = conn.execute("""
             SELECT 
-                timestamp, symbol, direction, entry_price, sl, tp1, tp2, 
+                id, timestamp, symbol, direction, entry_price, sl, tp1, tp2, 
                 reasoning, timeframe, confidence, result, closed_at, max_tp_reached,
-                trade_type, quality_score, regime, expected_hold, risk_details, score_details
+                trade_type, quality_score, regime, expected_hold, risk_details, score_details,
+                forensic_candles, forensic_events
             FROM signals 
             ORDER BY timestamp DESC LIMIT 50
         """)
@@ -737,6 +780,22 @@ async def get_signals(current_user: User = Depends(get_current_user)):
     finally:
         if conn:
             conn.close()
+
+@app.get("/api/signals/{signal_id}")
+async def get_signal_detail(signal_id: int, current_user: User = Depends(get_current_user)):
+    """Fetch all details for a single signal, including forensic forensics data."""
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Signal not found")
+        return dict(row)
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn: conn.close()
 
 async def get_market_context():
     """V19.0: Fetch and cache macro/news context for dashboard visibility."""
@@ -831,7 +890,7 @@ async def get_daily_analytics(current_user: User = Depends(get_current_user)):
             WHERE timestamp >= ?
         """, (last_24h,)).fetchone()
         
-        # 2. Performance by Trade Type (SCALP vs SWING)
+        # 2. Performance by Trade Type (INSTITUTIONAL vs SWING)
         type_stats = conn.execute("""
             SELECT 
                 UPPER(TRIM(trade_type)) as trade_type,
@@ -1016,6 +1075,131 @@ async def get_daily_analytics(current_user: User = Depends(get_current_user)):
         if conn:
             conn.close()
 
+@app.get("/api/analytics/forensic_audit")
+async def get_forensic_audit(regime: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    """
+    V30.0: Regime-Aware Forensic Alpha Audit Engine
+    Analyzes historical signals grouped by institutional combination and market environment.
+    """
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        conn.row_factory = sqlite3.Row
+        
+        query = """
+            SELECT trade_type, result, forensic_events, entry_price, sl, tp1, max_tp_reached, regime 
+            FROM signals 
+            WHERE forensic_events IS NOT NULL 
+            AND forensic_events != '[]' 
+            AND result != 'OPEN'
+        """
+        params = []
+        if regime and regime != "ALL":
+            query += " AND regime = ?"
+            params.append(regime)
+            
+        rows = conn.execute(query, params).fetchall()
+        
+        audit_map = {} # key: event_mask (sorted string)
+
+        for row in rows:
+            try:
+                events = json.loads(row['forensic_events'])
+            except:
+                continue
+                
+            # Create a unique tag combination for this signal
+            tags = sorted(list(set([ev['type'] for ev in events])))
+            mask = " + ".join(tags) if tags else "NONE"
+            
+            if mask not in audit_map:
+                audit_map[mask] = {"count": 0, "wins": 0, "total_rr": 0}
+            
+            # Outcome Logic
+            is_win = row['result'] in ['TP1', 'TP2', 'TP3'] or (row['max_tp_reached'] or 0) > 0
+            
+            # Calculate actualized R:R (very rough estimate for audit)
+            risk = abs(row['entry_price'] - row['sl'])
+            reward = abs(row['tp1'] - row['entry_price'])
+            rr = (reward / risk) if risk > 0 else 0
+            
+            audit_map[mask]["count"] += 1
+            if is_win:
+                audit_map[mask]["wins"] += 1
+                audit_map[mask]["total_rr"] += rr
+                
+        # Transform for frontend
+        from core.alpha_combiner import AlphaCombiner
+        
+        # Load System Threshold
+        threshold = 30
+        try:
+            conn_conf = get_db_connection(DB_CLIENTS)
+            val = conn_conf.execute("SELECT multiplier FROM weight_overrides WHERE event_type = 'SYSTEM_THRESHOLD'").fetchone()
+            if val: threshold = int(val[0])
+            conn_conf.close()
+        except: pass
+
+        result = []
+        for mask, data in audit_map.items():
+            raw_p = data["wins"] / data["count"] if data["count"] > 0 else 0
+            wr = raw_p * 100
+            avg_rr = (data["total_rr"] / data["wins"]) if data["wins"] > 0 else 0
+            
+            # Implementation of Wilson Score Interval for UI
+            ci = AlphaCombiner.calculate_wilson_interval(raw_p, data["count"])
+            
+            # Hardened conviction: Must pass sample size threshold to be HIGH/MODERATE
+            if data["count"] < threshold:
+                conviction = "CALIBRATING"
+            else:
+                conviction = "HIGH" if wr >= 60 else ("MODERATE" if wr >= 45 else "LOW")
+
+            result.append({
+                "combination": mask,
+                "sample_size": data["count"],
+                "win_rate": round(wr, 1),
+                "avg_rr": round(avg_rr, 2),
+                "conviction": conviction,
+                "ci": ci,
+                "is_confident": data["count"] >= threshold
+            })
+            
+        return sorted(result, key=lambda x: x['win_rate'], reverse=True)
+    except Exception as e:
+        print(f"Forensic Audit Error: {e}")
+        return []
+    finally:
+        if conn: conn.close()
+
+@app.get("/api/config/weights")
+async def get_weight_overrides(current_user: User = Depends(get_current_user)):
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        rows = conn.execute("SELECT * FROM weight_overrides").fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        if conn: conn.close()
+
+@app.put("/api/config/weights")
+async def update_weight_override(data: dict, current_user: User = Depends(get_current_user)):
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        conn.execute("""
+            INSERT INTO weight_overrides (event_type, multiplier, is_active)
+            VALUES (?, ?, ?)
+            ON CONFLICT(event_type) DO UPDATE SET
+            multiplier = excluded.multiplier,
+            is_active = excluded.is_active
+        """, (data['event_type'], data['multiplier'], 1 if data.get('is_active', True) else 0))
+        conn.commit()
+        return {"status": "success"}
+    finally:
+        if conn: conn.close()
+
+
 @app.get("/api/logs/{service}")
 async def get_logs(service: str, lines: int = 100, current_user: User = Depends(get_current_user)):
     """V19.0: System Log Retrieval - reads journalctl for specified service."""
@@ -1040,6 +1224,201 @@ async def get_logs(service: str, lines: int = 100, current_user: User = Depends(
         return {"logs": result.stdout}
     except Exception as e:
         return {"logs": f"Log retrieval failed: {str(e)}"}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V31.0: EXECUTION LIFECYCLE APIs
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/execution/gate-log")
+async def get_gate_log(current_user: User = Depends(get_current_user)):
+    """Returns recent gate decisions for dashboard display."""
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        rows = conn.execute("""
+            SELECT id, timestamp, symbol, direction, regime, quality_score,
+                   gate_status, gate_reason, trade_type
+            FROM signals 
+            WHERE gate_status IS NOT NULL AND gate_status != 'UNKNOWN'
+            ORDER BY timestamp DESC LIMIT 50
+        """).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        if conn: conn.close()
+
+@app.get("/api/execution/paper-account")
+async def get_paper_account(current_user: User = Depends(get_current_user)):
+    """Returns the current paper trading account state."""
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        
+        # Get account balance
+        acct = conn.execute("SELECT * FROM paper_account WHERE id = 1").fetchone()
+        balance = dict(acct) if acct else {"balance": 100000.0, "equity": 100000.0}
+        
+        # Get today's P&L
+        today = datetime.now().strftime('%Y-%m-%d')
+        daily_pnl = conn.execute("""
+            SELECT COALESCE(SUM(result_pips), 0) as total_pips,
+                   COUNT(*) as trade_count
+            FROM signals 
+            WHERE closed_at LIKE ? AND gate_status = 'PASSED'
+        """, (f"{today}%",)).fetchone()
+        
+        # Get gate stats
+        gate_stats = conn.execute("""
+            SELECT gate_status, COUNT(*) as count
+            FROM signals
+            WHERE gate_status IS NOT NULL AND gate_status != 'UNKNOWN'
+            GROUP BY gate_status
+        """).fetchall()
+        
+        stats = {row['gate_status']: row['count'] for row in gate_stats}
+        
+        return {
+            "balance": balance.get('balance', 100000.0),
+            "equity": balance.get('equity', 100000.0),
+            "daily_pips": dict(daily_pnl)['total_pips'] if daily_pnl else 0,
+            "daily_trades": dict(daily_pnl)['trade_count'] if daily_pnl else 0,
+            "total_passed": stats.get('PASSED', 0),
+            "total_blocked": stats.get('BLOCKED', 0),
+            "observation_target": 50
+        }
+    finally:
+        if conn: conn.close()
+
+@app.get("/api/execution/positions")
+async def get_positions(current_user: User = Depends(get_current_user)):
+    """Returns open positions (paper or live)."""
+    try:
+        from core.trade_executor import get_executor
+        executor = get_executor()
+        positions = await executor.get_open_positions()
+        return positions
+    except Exception as e:
+        return []
+
+@app.get("/api/execution/observation-report")
+async def get_observation_report(current_user: User = Depends(get_current_user)):
+    """V31.0: Aggregates institutional discipline metrics for Phase B readiness assessment."""
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        
+        # 1. Total Overview
+        total_data = conn.execute("""
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN gate_status = 'PASSED' THEN 1 ELSE 0 END) as passed,
+                   SUM(CASE WHEN gate_status = 'BLOCKED' THEN 1 ELSE 0 END) as blocked
+            FROM signals 
+            WHERE gate_status IS NOT NULL AND gate_status != 'UNKNOWN'
+        """).fetchone()
+        
+        # 2. Blocked Breakdown
+        blocked_reasons = conn.execute("""
+            SELECT gate_reason, COUNT(*) as count
+            FROM signals
+            WHERE gate_status = 'BLOCKED'
+            GROUP BY gate_reason
+        """).fetchall()
+        
+        # 3. Performance on PASSED signals
+        perf_data = conn.execute("""
+            SELECT COUNT(*) as total_trades,
+                   SUM(CASE WHEN result IN ('TP1', 'TP2', 'TP3') THEN 1 ELSE 0 END) as wins,
+                   SUM(CASE WHEN result = 'SL' THEN 1 ELSE 0 END) as losses,
+                   SUM(result_pips) as net_pips
+            FROM signals
+            WHERE gate_status = 'PASSED' AND result != 'OPEN'
+        """).fetchone()
+        
+        # 4. Account State
+        acct = conn.execute("SELECT balance FROM paper_account WHERE id = 1").fetchone()
+        
+        total = total_data['total'] or 0
+        passed = total_data['passed'] or 0
+        blocked = total_data['blocked'] or 0
+        
+        return {
+            "summary": {
+                "total_signals": total,
+                "pass_count": passed,
+                "block_count": blocked,
+                "pass_rate_pct": round((passed / total * 100), 1) if total > 0 else 0,
+            },
+            "rejections": {row['gate_reason']: row['count'] for row in blocked_reasons},
+            "performance": {
+                "trades_closed": perf_data['total_trades'] or 0,
+                "win_rate_pct": round((perf_data['wins'] / perf_data['total_trades'] * 100), 1) if perf_data['total_trades'] and perf_data['total_trades'] > 0 else 0,
+                "net_pips": round(perf_data['net_pips'] or 0, 1),
+                "current_balance": acct['balance'] if acct else 100000.0,
+                "roi_pct": round(((acct['balance'] / 100000.0) - 1) * 100, 2) if acct else 0
+            },
+            "readiness_score": min(100, round((passed / 50) * 100)) # Target 50 PASSES
+        }
+    finally:
+        if conn: conn.close()
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V32.0: BACKTESTING APIs
+# ═══════════════════════════════════════════════════════════════════════════
+
+BACKTEST_PROGRESS = {}
+
+@app.post("/api/backtest/run")
+async def run_backtest(request: Request, current_user: User = Depends(get_current_user)):
+    """V32.0: Initiates a historical backtest run."""
+    from core.backtest_engine import BacktestEngine
+    data = await request.json()
+    start_date = data.get("start_date", (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+    end_date = data.get("end_date", datetime.now().strftime('%Y-%m-%d'))
+    
+    unique_id = secrets.token_hex(4)
+    BACKTEST_PROGRESS[unique_id] = 0.0
+    
+    async def task():
+        engine = BacktestEngine(start_date, end_date)
+        def update_prog(p): BACKTEST_PROGRESS[unique_id] = round(p * 100, 1)
+        await engine.run(progress_callback=update_prog)
+        BACKTEST_PROGRESS[unique_id] = 100.0
+        
+    asyncio.create_task(task())
+    return {"job_id": unique_id, "status": "started"}
+
+@app.get("/api/backtest/progress/{job_id}")
+async def get_backtest_progress(job_id: str, current_user: User = Depends(get_current_user)):
+    return {"progress": BACKTEST_PROGRESS.get(job_id, 0.0)}
+
+@app.get("/api/backtest/runs")
+async def list_backtest_runs(current_user: User = Depends(get_current_user)):
+    db_path = "database/backtest_results.db"
+    if not os.path.exists(db_path): return []
+    with get_db_connection(db_path) as conn:
+        rows = conn.execute("SELECT * FROM backtest_runs ORDER BY timestamp DESC").fetchall()
+        return [dict(row) for row in rows]
+
+@app.get("/api/backtest/results/{run_id}")
+async def get_backtest_results(run_id: int, current_user: User = Depends(get_current_user)):
+    db_path = "database/backtest_results.db"
+    with get_db_connection(db_path) as conn:
+        run = conn.execute("SELECT * FROM backtest_runs WHERE id = ?", (run_id,)).fetchone()
+        trades = conn.execute("SELECT * FROM backtest_signals WHERE run_id = ?", (run_id,)).fetchall()
+        
+        # Calculate daily equity curve for chart
+        equity_curve = []
+        balance = 100000.0
+        sorted_trades = sorted([dict(t) for t in trades], key=lambda x: x['timestamp'])
+        
+        for t in sorted_trades:
+            balance += t['result_pips'] * 1.0 # 1.0 per pip mock
+            equity_curve.append({"time": t['timestamp'], "balance": balance})
+            
+        return {
+            "run": dict(run) if run else {},
+            "trades": [dict(t) for t in trades],
+            "equity_curve": equity_curve
+        }
 
 # Mount static files for the dashboard
 if os.path.exists("dashboard"):
