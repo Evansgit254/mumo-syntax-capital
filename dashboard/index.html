@@ -980,6 +980,91 @@
                 document.getElementById('log-terminal').innerText = data.logs;
             } catch { document.getElementById('log-terminal').innerText = "FAILED_TO_LOAD_KERNEL_LOGS"; }
         }
+        // BACKTEST ENGINE (V32.0)
+        async function loadBacktestRuns() {
+            try {
+                const res = await apiFetch('/api/backtest/runs');
+                const data = await res.json();
+                const body = document.getElementById('bt-runs-body');
+                if (!body) return;
+                body.innerHTML = '';
+                
+                data.forEach(run => {
+                    const row = document.createElement('tr');
+                    const wrColor = run.win_rate >= 50 ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
+                    const pipColor = run.net_pips >= 0 ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
+                    
+                    row.innerHTML = `
+                        <td class="mono" style="font-size: 10px;">${run.timestamp}</td>
+                        <td class="mono">${run.total_trades}</td>
+                        <td class="mono" style="color: ${wrColor}; font-weight: 700;">${run.win_rate}%</td>
+                        <td class="mono text-right" style="color: ${pipColor};">${run.net_pips > 0 ? '+' : ''}${run.net_pips}</td>
+                    `;
+                    body.appendChild(row);
+                });
+            } catch (e) { console.error("Backtest Runs Fetch Failed", e); }
+        }
+
+        async function runBacktest() {
+            const btn = document.getElementById('bt-run-btn');
+            const idleText = document.getElementById('bt-idle-text');
+            const progContainer = document.getElementById('bt-progress-container');
+            const bar = document.getElementById('bt-progress-bar');
+            const txt = document.getElementById('bt-progress-text');
+
+            try {
+                btn.disabled = true;
+                btn.innerText = "SIMULATING...";
+                idleText.style.display = 'none';
+                progContainer.style.display = 'block';
+                bar.style.width = '0%';
+                txt.innerText = '0%';
+
+                const res = await apiFetch('/api/backtest/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        end_date: new Date().toISOString().split('T')[0]
+                    })
+                });
+                
+                const { job_id } = await res.json();
+                
+                // Start polling
+                const poll = setInterval(async () => {
+                    try {
+                        const pRes = await apiFetch(`/api/backtest/progress/${job_id}`);
+                        const pData = await pRes.json();
+                        const progress = pData.progress;
+                        
+                        bar.style.width = progress + '%';
+                        txt.innerText = progress + '%';
+
+                        if (progress >= 100) {
+                            clearInterval(poll);
+                            btn.disabled = false;
+                            btn.innerText = "START_SIMULATION";
+                            showToast("BACKTEST_SIMULATION_COMPLETE");
+                            loadBacktestRuns();
+                            setTimeout(() => {
+                                idleText.style.display = 'block';
+                                progContainer.style.display = 'none';
+                            }, 3000);
+                        }
+                    } catch (e) {
+                        clearInterval(poll);
+                        btn.disabled = false;
+                        btn.innerText = "START_SIMULATION";
+                    }
+                }, 1000);
+
+            } catch (e) {
+                btn.disabled = false;
+                btn.innerText = "START_SIMULATION";
+                showToast("BACKTEST_INIT_FAILED", "error");
+            }
+        }
 
         // CLIENTS ENGINE
         async function loadClients() {
