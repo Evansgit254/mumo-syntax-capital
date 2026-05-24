@@ -117,8 +117,9 @@ class BacktestEngine:
         print(f"🚀 Simulating {len(common_m5_index)} M5 cycles across {len(active_strategies)} strategies...")
         
         for i, ts in enumerate(common_m5_index):
-            if progress_callback and i % 500 == 0:
+            if progress_callback and i % 100 == 0:
                 progress_callback(i / len(common_m5_index))
+                await asyncio.sleep(0) # Yield to event loop to keep API responsive
             
             for symbol, tfs in all_data.items():
                 m5_full = tfs['m5']
@@ -182,6 +183,8 @@ class BacktestEngine:
                         
                         if outcome['pips'] > 0: wins += 1
                         total_pips += outcome['pips']
+            
+            await asyncio.sleep(0) # Yield again after symbol loop
 
         self._save_signals(trades)
         self._finalize_run_record(run_id, len(trades), wins, total_pips)
