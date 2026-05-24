@@ -1012,13 +1012,22 @@
             const bar = document.getElementById('bt-progress-bar');
             const txt = document.getElementById('bt-progress-text');
 
+            const resetUI = () => {
+                btn.disabled = false;
+                btn.innerText = "START_SIMULATION";
+                setTimeout(() => {
+                    idleText.style.display = 'block';
+                    progContainer.style.display = 'none';
+                }, 3000);
+            };
+
             try {
                 btn.disabled = true;
                 btn.innerText = "SIMULATING...";
                 idleText.style.display = 'none';
                 progContainer.style.display = 'block';
                 bar.style.width = '0%';
-                txt.innerText = '0%';
+                txt.innerText = 'Initializing...';
 
                 const res = await apiFetch('/api/backtest/run', {
                     method: 'POST',
@@ -1030,32 +1039,44 @@
                 });
                 
                 const { job_id } = await res.json();
+                let pollCount = 0;
+                const maxPolls = 300; // 5 min timeout (300 * 1s)
                 
-                // Start polling
                 const poll = setInterval(async () => {
+                    pollCount++;
                     try {
                         const pRes = await apiFetch(`/api/backtest/progress/${job_id}`);
                         const pData = await pRes.json();
-                        const progress = pData.progress;
                         
-                        bar.style.width = progress + '%';
-                        txt.innerText = progress + '%';
+                        bar.style.width = pData.progress + '%';
+                        txt.innerText = pData.progress + '%';
 
-                        if (progress >= 100) {
+                        if (pData.status === 'error') {
                             clearInterval(poll);
-                            btn.disabled = false;
-                            btn.innerText = "START_SIMULATION";
+                            showToast("BACKTEST_ERROR: " + (pData.error || "Unknown"), "error");
+                            txt.innerText = 'FAILED';
+                            bar.style.background = 'var(--acc-crimson)';
+                            resetUI();
+                            return;
+                        }
+
+                        if (pData.status === 'done' || pData.progress >= 100) {
+                            clearInterval(poll);
                             showToast("BACKTEST_SIMULATION_COMPLETE");
                             loadBacktestRuns();
-                            setTimeout(() => {
-                                idleText.style.display = 'block';
-                                progContainer.style.display = 'none';
-                            }, 3000);
+                            resetUI();
+                            return;
+                        }
+
+                        if (pollCount >= maxPolls) {
+                            clearInterval(poll);
+                            showToast("BACKTEST_TIMEOUT: Simulation exceeded 5 minutes", "error");
+                            txt.innerText = 'TIMEOUT';
+                            resetUI();
                         }
                     } catch (e) {
                         clearInterval(poll);
-                        btn.disabled = false;
-                        btn.innerText = "START_SIMULATION";
+                        resetUI();
                     }
                 }, 1000);
 
