@@ -615,15 +615,22 @@
         function logout() {
             authToken = null;
             localStorage.removeItem('authToken');
+            if (syncInterval) {
+                clearInterval(syncInterval);
+                syncInterval = null;
+            }
             document.getElementById('login-screen').style.display = 'flex';
             document.getElementById('terminal-shell').style.display = 'none';
         }
 
+        let syncInterval = null;
         function showDashboard() {
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('terminal-shell').style.display = 'grid';
             syncAll();
-            setInterval(syncAll, 10000);
+            if (!syncInterval) {
+                syncInterval = setInterval(syncAll, 10000);
+            }
             showView('signals');
         }
 
@@ -722,8 +729,10 @@
             try {
                 const res = await apiFetch('/api/signals?limit=50');
                 const signals = await res.json();
-                const body = document.getElementById('signal-table-body');
-                body.innerHTML = '';
+                const tbody = document.getElementById('signal-table-body');
+                if (!tbody) return;
+
+                const fragment = document.createDocumentFragment();
                 signals.forEach(sig => {
                     const row = document.createElement('tr');
                     row.onclick = () => showSignalDetails(sig.id);
@@ -744,8 +753,10 @@
                         <td><span class="badge" style="border-color: ${gateColor}; color: ${gateColor}; font-size: 9px;">${gateLabel}</span></td>
                         <td class="mono text-right" style="color: ${resColor};">${sig.result || 'PENDING'}</td>
                     `;
-                    body.appendChild(row);
+                    fragment.appendChild(row);
                 });
+                tbody.innerHTML = '';
+                tbody.appendChild(fragment);
             } catch (e) { console.error("Signal Feed Failed", e); }
         }
 
@@ -753,16 +764,17 @@
             try {
                 const res = await apiFetch('/api/mt5/positions');
                 const data = await res.json();
-                const body = document.getElementById('mt5-positions-body');
-                body.innerHTML = '';
+                const tbody = document.getElementById('mt5-positions-body');
+                if (!tbody) return;
                 
                 document.getElementById('mt5-mode-badge').innerText = data.mode?.toUpperCase() || "SYNCED";
                 
                 if (!data.positions || data.positions.length === 0) {
-                    body.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-tertiary); padding: 32px;">NO OPEN EXPOSURE</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-tertiary); padding: 32px;">NO OPEN EXPOSURE</td></tr>';
                     return;
                 }
 
+                const fragment = document.createDocumentFragment();
                 data.positions.forEach(pos => {
                     const row = document.createElement('tr');
                     const color = pos.type.includes('BUY') ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
@@ -775,8 +787,10 @@
                         <td class="mono text-tertiary">${pos.price_current}</td>
                         <td class="mono text-right" style="color: ${profitColor}; font-weight: 700;">$${pos.profit.toFixed(2)}</td>
                     `;
-                    body.appendChild(row);
+                    fragment.appendChild(row);
                 });
+                tbody.innerHTML = '';
+                tbody.appendChild(fragment);
             } catch { console.error("MT5 Fetch Failed"); }
         }
 
@@ -831,24 +845,26 @@
                 const matrixBody = document.getElementById('strategy-matrix-body');
                 const matrixHead = document.getElementById('matrix-head');
                 if (matrixBody && matrixHead) {
-                    matrixBody.innerHTML = '';
-                    
                     const breakdown = data.strategy_symbol_breakdown || [];
                     const strategies = [...new Set(breakdown.map(b => b.trade_type))];
                     const assets = [...new Set(breakdown.map(b => b.symbol))];
                     
                     matrixHead.innerHTML = `<tr><th>ASSET</th>${strategies.map(s => `<th>${s}</th>`).join('')}</tr>`;
                     
+                    const fragment = document.createDocumentFragment();
                     assets.forEach(asset => {
-                        let row = `<tr><td class="mono font-bold">${asset}</td>`;
+                        const tr = document.createElement('tr');
+                        let inner = `<td class="mono font-bold">${asset}</td>`;
                         strategies.forEach(s => {
                             const entry = breakdown.find(b => b.symbol === asset && b.trade_type === s);
                             const val = entry ? `${entry.wins}/${entry.total}` : '0/0';
-                            row += `<td class="mono text-xs">${val}</td>`;
+                            inner += `<td class="mono text-xs">${val}</td>`;
                         });
-                        row += '</tr>';
-                        matrixBody.innerHTML += row;
+                        tr.innerHTML = inner;
+                        fragment.appendChild(tr);
                     });
+                    matrixBody.innerHTML = '';
+                    matrixBody.appendChild(fragment);
                 }
 
                 // Bias
@@ -885,9 +901,8 @@
                 const regime = document.getElementById('audit-regime-filter').value;
                 const res = await apiFetch(`/api/analytics/forensic_audit?regime=${regime}`);
                 const data = await res.json();
-                const body = document.getElementById('forensic-audit-body');
-                if (!body) return;
-                body.innerHTML = '';
+                const tbody = document.getElementById('forensic-audit-body');
+                if (!tbody) return;
                 
                 // Update Top Nav Indicator from latest signal regime or system defaults
                 if (data.length > 0) {
@@ -895,6 +910,7 @@
                     updateRegimeIndicator(firstRegime);
                 }
 
+                const fragment = document.createDocumentFragment();
                 data.forEach(item => {
                     const row = document.createElement('tr');
                     const wrColor = item.win_rate > 50 ? 'var(--acc-emerald)' : (item.win_rate > 40 ? 'var(--acc-cyan)' : 'var(--text-tertiary)');
@@ -908,8 +924,10 @@
                         <td class="mono">${item.avg_rr}</td>
                         <td><span class="badge" style="border-color: ${convColor}; color: ${convColor};">${item.conviction}</span></td>
                     `;
-                    body.appendChild(row);
+                    fragment.appendChild(row);
                 });
+                tbody.innerHTML = '';
+                tbody.appendChild(fragment);
                 
                 loadWeightOverrides();
             } catch (e) { console.error("Forensic Audit Fetch Failed", e); }
@@ -928,9 +946,9 @@
 
                 const grid = document.getElementById('weight-overrides-grid');
                 if (!grid) return;
-                grid.innerHTML = '';
                 
                 const eventTypes = ['DAILY_BIAS', 'LIQUIDITY_SWEEP', 'MSS_DETECTED', 'FVG_FORMED', 'RANGE_ESTABLISHED'];
+                const fragment = document.createDocumentFragment();
                 
                 eventTypes.forEach(type => {
                     const ov = overrides.find(o => o.event_type === type) || { multiplier: 1.0, is_active: 1 };
@@ -944,18 +962,19 @@
                             <span class="label-caps" style="font-size: 10px; color: var(--acc-cyan);">${type}</span>
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 ${type !== 'SYSTEM_THRESHOLD' ? `<input type="checkbox" ${ov.is_active ? 'checked' : ''} onchange="updateWeight('${type}', null, this.checked)">` : ''}
+                                <button class="btn-micro" onclick="updateWeight('${type}', 1.0, true)">R</button>
                             </div>
                         </div>
-                        <div style="display: flex; gap: 12px; align-items: center;">
-                            <input type="range" min="0.1" max="3.0" step="0.1" value="${ov.multiplier}" 
-                                   style="flex: 1; accent-color: var(--acc-cyan);" 
-                                   oninput="this.nextElementSibling.innerText = this.value + 'x'"
-                                   onchange="updateWeight('${type}', this.value, true)">
-                            <span class="mono" style="font-size: 12px; min-width: 40px; color: var(--acc-amber);">${ov.multiplier}x</span>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <input type="range" min="0.1" max="5.0" step="0.1" value="${ov.multiplier}" 
+                                   onchange="updateWeight('${type}', this.value, null)" style="flex: 1;">
+                            <span class="mono" style="color: var(--acc-amber); width: 30px;">${ov.multiplier}x</span>
                         </div>
                     `;
-                    grid.appendChild(card);
+                    fragment.appendChild(card);
                 });
+                grid.innerHTML = '';
+                grid.appendChild(fragment);
             } catch (e) { console.error("Weight Overrides Fetch Failed", e); }
         }
 
@@ -985,27 +1004,55 @@
             try {
                 const res = await apiFetch('/api/backtest/runs');
                 const data = await res.json();
-                const body = document.getElementById('bt-runs-body');
-                if (!body) return;
-                body.innerHTML = '';
+                const tbody = document.getElementById('bt-runs-body');
+                if (!tbody) return;
+                
+                // Build content in memory to avoid "blinking" flicker
+                const fragment = document.createDocumentFragment();
                 
                 data.forEach(run => {
                     const row = document.createElement('tr');
-                    const wrColor = run.win_rate >= 50 ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
-                    const pipColor = run.net_pips >= 0 ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
+                    const isPending = run.status === 'IN_PROGRESS';
+                    const wrColor = (run.win_rate >= 50) ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
+                    const pipColor = (run.total_pips >= 0) ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
                     
                     row.innerHTML = `
                         <td class="mono" style="font-size: 10px;">${run.timestamp}</td>
-                        <td class="mono">${run.total_trades}</td>
-                        <td class="mono" style="color: ${wrColor}; font-weight: 700;">${run.win_rate}%</td>
-                        <td class="mono text-right" style="color: ${pipColor};">${run.net_pips > 0 ? '+' : ''}${run.net_pips}</td>
+                        <td class="mono">${isPending ? '<span class="status-pill warning" style="opacity: 0.8;">IN_PROGRESS...</span>' : (run.total_trades || 0)}</td>
+                        <td class="mono" style="color: ${isPending ? 'inherit' : wrColor}; font-weight: 700;">
+                            ${isPending ? '---' : (run.win_rate ? run.win_rate.toFixed(1) + '%' : '0.0%')}
+                        </td>
+                        <td class="mono text-right" style="color: ${isPending ? 'inherit' : pipColor};">
+                            ${isPending ? '---' : (run.total_pips ? (run.total_pips > 0 ? '+' : '') + run.total_pips.toFixed(1) : '0.0')}
+                        </td>
+                        <td class="text-right">
+                             ${!isPending ? `<button class="btn-micro" onclick="viewBacktestResults(${run.id})">VIEW</button>` : ''}
+                        </td>
                     `;
-                    body.appendChild(row);
+                    fragment.appendChild(row);
                 });
-            } catch (e) { console.error("Backtest Runs Fetch Failed", e); }
+
+                tbody.innerHTML = '';
+                tbody.appendChild(fragment);
+
+                // Auto-check for active simulation if we aren't already polling
+                if (!window.btPollingActive) {
+                    const jobRes = await apiFetch('/api/backtest/latest_job');
+                    const jobData = await jobRes.json();
+                    if (jobData && jobData.job_id) {
+                        monitorBacktest(jobData.job_id);
+                    }
+                }
+
+            } catch (e) {
+                console.error("Backtest Runs Fetch Failed", e);
+            }
         }
 
-        async function runBacktest() {
+        async function monitorBacktest(job_id) {
+            if (window.btPollingActive) return;
+            window.btPollingActive = true;
+
             const btn = document.getElementById('bt-run-btn');
             const idleText = document.getElementById('bt-idle-text');
             const progContainer = document.getElementById('bt-progress-container');
@@ -1013,22 +1060,65 @@
             const txt = document.getElementById('bt-progress-text');
 
             const resetUI = () => {
-                btn.disabled = false;
-                btn.innerText = "START_SIMULATION";
-                setTimeout(() => {
-                    idleText.style.display = 'block';
-                    progContainer.style.display = 'none';
-                }, 3000);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = "START_SIMULATION";
+                    btn.style.opacity = '1';
+                }
+                window.btPollingActive = false;
+                if (idleText) idleText.style.display = 'block';
+                if (progContainer) progContainer.style.display = 'none';
             };
 
-            try {
+            if (btn) {
                 btn.disabled = true;
                 btn.innerText = "SIMULATING...";
-                idleText.style.display = 'none';
-                progContainer.style.display = 'block';
-                bar.style.width = '0%';
-                txt.innerText = 'Initializing...';
+                btn.style.opacity = '0.5';
+            }
+            if (idleText) idleText.style.display = 'none';
+            if (progContainer) progContainer.style.display = 'block';
 
+            let pollCount = 0;
+            const poll = setInterval(async () => {
+                pollCount++;
+                try {
+                    const pRes = await apiFetch(`/api/backtest/progress/${job_id}`);
+                    if (!pRes.ok) throw new Error("Poll failed");
+                    const pData = await pRes.json();
+                    
+                    if (pData.status === 'unknown') {
+                        clearInterval(poll);
+                        resetUI();
+                        return;
+                    }
+
+                    if (bar) bar.style.width = pData.progress + '%';
+                    if (txt) txt.innerText = pData.progress + '%';
+
+                    if (pData.status === 'error') {
+                        clearInterval(poll);
+                        showToast("BACKTEST_ERROR: " + (pData.error || "Unknown"), "error");
+                        if (txt) txt.innerText = 'FAILED';
+                        if (bar) bar.style.background = 'var(--acc-crimson)';
+                        resetUI();
+                    } else if (pData.status === 'done' || pData.progress >= 100) {
+                        clearInterval(poll);
+                        showToast("BACKTEST_SIMULATION_COMPLETE");
+                        loadBacktestRuns();
+                        resetUI();
+                    } else if (pollCount > 1800) { // 30 min hard timeout
+                        clearInterval(poll);
+                        resetUI();
+                    }
+                } catch (e) {
+                    clearInterval(poll);
+                    resetUI();
+                }
+            }, 1000);
+        }
+
+        async function runBacktest() {
+            try {
                 const res = await apiFetch('/api/backtest/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1037,52 +1127,11 @@
                         end_date: new Date().toISOString().split('T')[0]
                     })
                 });
-                
-                const { job_id } = await res.json();
-                let pollCount = 0;
-                const maxPolls = 300; // 5 min timeout (300 * 1s)
-                
-                const poll = setInterval(async () => {
-                    pollCount++;
-                    try {
-                        const pRes = await apiFetch(`/api/backtest/progress/${job_id}`);
-                        const pData = await pRes.json();
-                        
-                        bar.style.width = pData.progress + '%';
-                        txt.innerText = pData.progress + '%';
-
-                        if (pData.status === 'error') {
-                            clearInterval(poll);
-                            showToast("BACKTEST_ERROR: " + (pData.error || "Unknown"), "error");
-                            txt.innerText = 'FAILED';
-                            bar.style.background = 'var(--acc-crimson)';
-                            resetUI();
-                            return;
-                        }
-
-                        if (pData.status === 'done' || pData.progress >= 100) {
-                            clearInterval(poll);
-                            showToast("BACKTEST_SIMULATION_COMPLETE");
-                            loadBacktestRuns();
-                            resetUI();
-                            return;
-                        }
-
-                        if (pollCount >= maxPolls) {
-                            clearInterval(poll);
-                            showToast("BACKTEST_TIMEOUT: Simulation exceeded 5 minutes", "error");
-                            txt.innerText = 'TIMEOUT';
-                            resetUI();
-                        }
-                    } catch (e) {
-                        clearInterval(poll);
-                        resetUI();
-                    }
-                }, 1000);
-
+                const data = await res.json();
+                if (data.job_id) {
+                    monitorBacktest(data.job_id);
+                }
             } catch (e) {
-                btn.disabled = false;
-                btn.innerText = "START_SIMULATION";
                 showToast("BACKTEST_INIT_FAILED", "error");
             }
         }
@@ -1092,8 +1141,10 @@
             try {
                 const res = await apiFetch('/api/clients');
                 const clients = await res.json();
-                const body = document.getElementById('clients-body');
-                body.innerHTML = '';
+                const tbody = document.getElementById('clients-body');
+                if (!tbody) return;
+
+                const fragment = document.createDocumentFragment();
                 clients.forEach(c => {
                     const row = document.createElement('tr');
                     const tierColor = c.subscription_tier === 'GOLD' ? 'var(--acc-amber)' : 'var(--text-secondary)';
@@ -1108,8 +1159,10 @@
                             <i class="fas fa-trash text-crimson" style="cursor: pointer;" onclick="deleteClient('${c.telegram_chat_id}')"></i>
                         </td>
                     `;
-                    body.appendChild(row);
+                    fragment.appendChild(row);
                 });
+                tbody.innerHTML = '';
+                tbody.appendChild(fragment);
             } catch { console.error("Client Load Failed"); }
         }
 
@@ -1540,7 +1593,7 @@
             <!-- Header -->
             <div class="p-4 border-b border-white/5 flex justify-between items-center bg-[#161B26]">
                 <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>
+                    <div class="w-2 h-2 rounded-full bg-cyan-400"></div>
                     <h2 class="text-sm font-bold tracking-widest text-[#F0F4FF] uppercase">Flash Forensics — Institutional Execution Replay</h2>
                 </div>
                 <button onclick="closeForensics()" class="p-2 hover:bg-white/5 rounded text-[#8B95A8] transition-colors">

@@ -1414,13 +1414,33 @@ async def get_backtest_progress(job_id: str, current_user: User = Depends(get_cu
     info = BACKTEST_PROGRESS.get(job_id, {"progress": 0.0, "status": "unknown", "error": None})
     return {"progress": info["progress"], "status": info["status"], "error": info["error"]}
 
+@app.get("/api/backtest/latest_job")
+async def get_latest_job(current_user: User = Depends(get_current_user)):
+    """Returns the ID of the most recent job to allow UI re-attachment."""
+    if not BACKTEST_PROGRESS: return {"job_id": None}
+    # Get the most recent job_id
+    latest_id = list(BACKTEST_PROGRESS.keys())[-1]
+    return {"job_id": latest_id}
+
 @app.get("/api/backtest/runs")
 async def list_backtest_runs(current_user: User = Depends(get_current_user)):
     db_path = "database/backtest_results.db"
     if not os.path.exists(db_path): return []
     with get_db_connection(db_path) as conn:
         rows = conn.execute("SELECT * FROM backtest_runs ORDER BY timestamp DESC").fetchall()
-        return [dict(row) for row in rows]
+        data = []
+        for row in rows:
+            d = dict(row)
+            # If total_trades is None, it means it's either running or crashed
+            if d.get("total_trades") is None:
+                # Check if it's currently in our active memory
+                # This is a bit of a heuristic since we don't store row ID in memory, 
+                # but for a single-user system it's fine.
+                d["status"] = "IN_PROGRESS"
+            else:
+                d["status"] = "COMPLETED"
+            data.append(d)
+        return data
 
 @app.get("/api/backtest/results/{run_id}")
 async def get_backtest_results(run_id: int, current_user: User = Depends(get_current_user)):
