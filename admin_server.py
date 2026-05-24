@@ -1464,6 +1464,26 @@ async def get_backtest_results(run_id: int, current_user: User = Depends(get_cur
             "equity_curve": equity_curve
         }
 
+@app.get("/api/system/config")
+async def get_system_config(current_user: User = Depends(get_current_user)):
+    """Returns the list of active symbols and strategies for the dashboard sidebar."""
+    clean_symbols = [s.replace("=X", "").replace("=F", "").replace("-USD", "/USD") for s in SYMBOLS]
+    
+    # Extract unique trade types from signal history
+    strategies = ["CRT_SMC"] # Default
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        rows = conn.execute("SELECT DISTINCT trade_type FROM signals").fetchall()
+        if rows:
+            strategies = list(set([r['trade_type'] for r in rows if r['trade_type']]))
+        conn.close()
+    except: pass
+
+    return {
+        "symbols": clean_symbols,
+        "strategies": strategies
+    }
+
 # Mount static files for the dashboard
 if os.path.exists("dashboard"):
     app.mount("/", StaticFiles(directory="dashboard", html=True), name="dashboard")
