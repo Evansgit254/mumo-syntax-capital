@@ -1202,26 +1202,39 @@ async def update_weight_override(data: dict, current_user: User = Depends(get_cu
 
 @app.get("/api/logs/{service}")
 async def get_logs(service: str, lines: int = 100, current_user: User = Depends(get_current_user)):
-    """V19.0: System Log Retrieval - reads journalctl for specified service."""
-    allowed_services = [
-        "smc-admin-dashboard",
-        "smc-signal-service",
-        "smc-interactive-bot",
-        "smc-signal-tracker"
-    ]
+    """V19.0: System Log Retrieval - checks local files first, then journalctl."""
+    # Mapping service IDs to local log files
+    log_map = {
+        "smc-admin-dashboard": "admin.log",
+        "smc-signal-service": "signals.log",
+        "smc-alpha-kernel": "signals.log",
+        "smc-interactive-bot": "bot.log",
+        "smc-signal-tracker": "tracker.log"
+    }
     
-    if service not in allowed_services:
+    if service not in log_map:
         raise HTTPException(status_code=400, detail="Invalid service name")
 
+    # 1. Try local file first (fastest and most reliable in user-mode)
+    local_log = log_map[service]
+    if os.path.exists(local_log):
+        try:
+            # Use tail command to safely get the last N lines
+            result = subprocess.run(["tail", "-n", str(lines), local_log], capture_output=True, text=True)
+            if result.returncode == 0:
+                return {"logs": result.stdout}
+        except Exception as e:
+            print(f"Failed to read local log {local_log}: {e}")
+
+    # 2. Fallback to journalctl
     try:
-        # journalctl can be read without sudo if user is in systemd-journal group
-        cmd = ["journalctl", "-u", f"{service}.service", "-n", str(lines), "--no-pager"]
+        cmd = ["journalctl", "--user", "-u", f"{service}.service", "-n", str(lines), "--no-pager"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         
-        if result.returncode != 0:
-            return {"logs": f"Error retrieving logs: {result.stderr}"}
+        if result.returncode == 0 and result.stdout.strip():
+            return {"logs": result.stdout}
             
-        return {"logs": result.stdout}
+        return {"logs": f"No logs found in {local_log} or systemd."}
     except Exception as e:
         return {"logs": f"Log retrieval failed: {str(e)}"}
 
