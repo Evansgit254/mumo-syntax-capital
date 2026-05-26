@@ -35,33 +35,35 @@ from data.news_fetcher import NewsFetcher
 # rr_multiplier: 1.0 = standard 1.5R, 1.5 = 2.25R, 2.0 = 3R
 CLOCK_SIGNALS = {
     "CL=F": [        # OIL
-        (21, "BUY",  1.5),   # NY Close rally — strongest pattern (64.6% WR)
-        (7,  "SELL", 1.0),   # Pre-London bear (60.5% bear rate)
+        # (21, "BUY",  1.5),   # NY Close rally — FAILURE in current regime
+        (7,  "SELL", 1.0),   # Pre-London bear (60.5% bear rate) — 16/16 WR in Run 29
     ],
     "BTC-USD": [
-        (21, "BUY",  1.0),   # NY Close BTC rally (53.8% WR)
-        (22, "BUY",  1.0),   # Post-NY continuation (54.4% WR)
+        # (21, "BUY",  1.0),   # DISABLED: Inconsistent edge
+        # (22, "BUY",  1.0),   # DISABLED: Inconsistent edge
     ],
-    "GC=F": [        # GOLD
-        (16, "BUY",  1.5),   # London Close gold rally (57.3% WR)
-        (11, "BUY",  1.0),   # Pre-NY gold bid (55.6% WR)
-    ],
+    # V36.0 FORENSIC: GC=F BUY REMOVED — 0/31 WR (-31.0R) in Run 29. Gold handled by GoldQuantStrategy.
+    # "GC=F": [
+    #     (16, "BUY",  1.5),   # KILLED: 0% WR in 31 trades
+    #     (11, "BUY",  1.0),   # KILLED: 0% WR in 31 trades
+    # ],
     "EURUSD=X": [
         (8,  "BUY",  1.0),   # London Open EURUSD (51.9% WR)
         (16, "SELL", 1.0),   # London Close EURUSD selloff (57.4% bear)
     ],
     "AUDUSD=X": [
-        (22, "BUY",  1.0),   # Post-NY AUDUSD (54.3% WR)
+        # (22, "BUY",  1.0),   # DISABLED: Inconsistent edge
     ],
     "GBPJPY=X": [
-        (21, "SELL", 1.5),   # NY Close JPY strength (65.5% bear)
+        # (21, "SELL", 1.5),   # DISABLED: Over-filtered
         (18, "BUY",  1.0),   # Pre-NY close GBPJPY (57.6% WR)
         (23, "BUY",  1.0),   # Asian open GBPJPY (57.6% WR)
     ],
-    "USDJPY=X": [
-        (21, "SELL", 1.5),   # NY Close JPY strength (65.2% bear)
-        (18, "BUY",  1.0),   # Pre-NY close USDJPY (56.9% WR)
-    ],
+    # V36.0 FORENSIC: USDJPY BUY REMOVED — 0/16 WR (-16.0R) in Run 29.
+    # USDJPY SELL remains available via Advanced Patterns (4/4 WR, +6.0R).
+    # "USDJPY=X": [
+    #     (18, "BUY",  1.0),   # KILLED: 0% WR in 16 trades
+    # ],
 }
 
 # ATR multipliers for SL/TP
@@ -149,6 +151,10 @@ class SessionClockStrategy(BaseStrategy):
             regime = IndicatorCalculator.get_market_regime(df)
             if regime in ["CHOPPY", "UNKNOWN"]:
                 return None
+            
+            # V36.0: Block in LOW_VOL_RANGE — momentum plays fail in compression
+            if regime == "LOW_VOL_RANGE":
+                return None
                 
             macro_bias = MacroFilter.get_macro_bias(market_context)
             if not MacroFilter.is_macro_safe(symbol, direction, macro_bias):
@@ -184,7 +190,7 @@ class SessionClockStrategy(BaseStrategy):
                 sl = entry + sl_dist
                 tp = entry - tp_dist
 
-            risk_details = RiskManager.calculate_lot_size(symbol, entry, sl)
+            risk_details = RiskManager.calculate_lot_size(symbol, entry, sl, hour=current_hour)
 
             return {
                 'strategy_id':   self.get_id(),

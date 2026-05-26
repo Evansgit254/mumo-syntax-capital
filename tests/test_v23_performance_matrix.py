@@ -116,7 +116,7 @@ def test_strategy_symbol_breakdown():
         assert gbpjpy_clock['wins'] == 1
         
         # 3. Verify BTC Swing (1 total, 1 open)
-        btc_swing = next((r for r in matrix if r['symbol'] == 'BTC-USD' and r['trade_type'] == 'SWING'), None)
+        btc_swing = next((r for r in matrix if r['symbol'] == 'BTC-USD' and r['trade_type'] == 'CRT'), None)
         assert btc_swing is not None
         assert btc_swing['total'] == 1
         assert btc_swing['open'] == 1

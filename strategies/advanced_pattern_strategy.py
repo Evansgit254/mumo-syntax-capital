@@ -15,16 +15,20 @@ from core.filters.risk_manager import RiskManager
 # Format: { (dow, hour, symbol): (direction, quality_score, expected_hold) }
 # dow: 0=Mon, 2=Wed, 4=Fri
 DOW_SIGNALS = {
-    (2, 21, "USDJPY=X"): ("SELL", 9.5, "1 hour (DOW-WED-BEAR)"),
+    (2, 21, "USDJPY=X"): ("SELL", 9.5, "1 hour (DOW-WED-BEAR)"),  # 4/4 WR, +6.0R in Run 29
     (2, 21, "GBPJPY=X"): ("SELL", 9.5, "1 hour (DOW-WED-BEAR)"),
-    (4, 21, "CL=F"):     ("BUY",  9.0, "1 hour (DOW-FRI-OIL-BULL)"),
-    (1, 13, "GC=F"):     ("BUY",  8.8, "1 hour (DOW-TUE-GOLD-BID)"),
+    # V35.1r: CL=F REMOVED — 15/17 losses (-14R) in Run 26 forensic audit
+    # (4, 21, "CL=F"):     ("BUY",  9.0, "1 hour (DOW-FRI-OIL-BULL)"),
+    # V36.0: GC=F BUY REMOVED — 0/4 WR (-4.0R) in Run 29. Gold exclusive to GoldQuantStrategy.
+    # (1, 13, "GC=F"):     ("BUY",  8.8, "1 hour (DOW-TUE-GOLD-BID)"),
 }
 
 class AdvancedPatternStrategy(BaseStrategy):
     """
     Advanced strategy targeting specific Day-of-Week nuances and Pin-Bar stop hunts.
+    V35.1r: Session dedup to prevent multiple fires per symbol per day.
     """
+    _fired_today: dict = {}  # {(symbol, date_str): True}
 
     def get_id(self) -> str:
         return "advanced_patterns_v23"
@@ -58,11 +62,18 @@ class AdvancedPatternStrategy(BaseStrategy):
 
             hour = ts_utc.hour
             dow  = ts_utc.dayofweek
+            date_str = ts_utc.strftime('%Y-%m-%d')
+            
+            # V35.1r: Session dedup — only fire once per symbol per calendar day
+            dedup_key = (symbol, date_str)
+            if dedup_key in AdvancedPatternStrategy._fired_today:
+                return None
             
             # --- 1. DOW-Hourly Signal Check ---
             dow_sig = DOW_SIGNALS.get((dow, hour, symbol))
             if dow_sig:
                 direction, q_score, hold = dow_sig
+                AdvancedPatternStrategy._fired_today[dedup_key] = True
                 return self._build_signal(symbol, df, direction, q_score, hold, "DOW_HOURLY_EDGE")
 
             # --- 2. Stop Hunt (Pin Bar Reversal) Check ---
@@ -104,9 +115,11 @@ class AdvancedPatternStrategy(BaseStrategy):
         entry  = latest['open']
         atr    = latest.get('atr', latest.get('ATR', df['high'].sub(df['low']).tail(20).mean()))
         
-        # Advanced patterns use wider stops for time-based expectancy
-        sl_dist = atr * 2.5
-        tp_dist = sl_dist # Standard 1:1 visual target
+        # Advanced patterns use tighter stops for 1-hour time-based expectancy
+        # V36.0: Tightened from 2.5 ATR to 2.0 ATR — reduces loss magnitude per trade
+        sl_dist = atr * 2.0
+        # V35.1r: Changed from 1:1 to 1.5:1 — breakeven WR drops from 50% to 40%
+        tp_dist = sl_dist * 1.5
         
         if direction == "BUY":
             sl = entry - sl_dist

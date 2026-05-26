@@ -1,20 +1,17 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 import sqlite3
-import json
 import asyncio
-from typing import List, Dict, Optional
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Any
 from config.config import SYMBOLS, DB_SIGNALS, DB_CLIENTS
 from indicators.calculations import IndicatorCalculator
-from strategies.crt_strategy import CRTStrategy
-from core.market_regime import detect_regime
 from core.execution_gate import ExecutionGate
 
 class BacktestEngine:
     """
-    V32.0: Institutional Backtesting Engine.
-    Simulates historical execution using actual candlestick data.
+    Institutional-grade Backtest Simulation Engine.
+    Engineered for high-fidelity signal verification and data integrity.
     """
     
     def __init__(self, start_date: str, end_date: str, symbols: List[str] = SYMBOLS):
@@ -22,12 +19,12 @@ class BacktestEngine:
         self.end_date = end_date
         self.symbols = symbols
         self.results_db = "database/backtest_results.db"
-        self._ensure_db()
+        self._initialize_database()
         
-    def _ensure_db(self):
-        """Create backtest results table."""
+    def _initialize_database(self) -> None:
+        """Ensures schema integrity for simulation results."""
         with sqlite3.connect(self.results_db) as conn:
-            conn.execute("""
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS backtest_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_name TEXT,
@@ -36,12 +33,8 @@ class BacktestEngine:
                     total_trades INTEGER,
                     win_rate REAL,
                     net_pips REAL,
-                    max_drawdown REAL,
-                    sharpe_ratio REAL,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.execute("""
+                );
                 CREATE TABLE IF NOT EXISTS backtest_signals (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_id INTEGER,
@@ -59,213 +52,223 @@ class BacktestEngine:
                     quality_score REAL,
                     timestamp TEXT,
                     closed_at TEXT
-                )
+                );
             """)
 
-    async def run(self, progress_callback=None):
-        """Run the backtest across all symbols with proper MTF alignment."""
-        from data.fetcher import DataFetcher
-        fetcher = DataFetcher()
-        
-        print(f"📥 Loading historical MTF data for {self.symbols}...")
-        
-        all_data = {}
-        for symbol in self.symbols:
-            # Fetch all required timeframes
-            m5_df = await fetcher.fetch_data_async(symbol, "5m", period="60d")
-            h1_df = await fetcher.fetch_data_async(symbol, "1h", period="60d")
-            d1_df = await fetcher.fetch_data_async(symbol, "1d", period="2y")
-            
-            if m5_df is not None and not m5_df.empty:
-                # Pre-calculate indicators
-                all_data[symbol] = {
-                    'm5': IndicatorCalculator.add_indicators(m5_df, "5m"),
-                    'h1': IndicatorCalculator.add_indicators(h1_df, "1h"),
-                    'd1': IndicatorCalculator.add_indicators(d1_df, "1d")
-                }
-        
+    async def run(self, progress_callback: Optional[Any] = None) -> Dict[str, Any]:
+        """
+        Executes a high-fidelity simulation across multiple timeframes.
+        """
+        all_data = await self._fetch_all_symbol_data()
         if not all_data:
-            return {"error": "No historical data found"}
+            return {"error": "Insufficient data available for this range."}
 
+        # Initialize institutional strategies
+        from strategies.crt_strategy import CRTStrategy
         from strategies.smc_liquidity_sweep import SMCLiquiditySweepStrategy
         from strategies.advanced_pattern_strategy import AdvancedPatternStrategy
         from strategies.session_clock_strategy import SessionClockStrategy
 
-        # Initialize strategies
-        active_strategies = [
+        strategies = [
             CRTStrategy(),
             SMCLiquiditySweepStrategy(),
             AdvancedPatternStrategy(),
             SessionClockStrategy()
         ]
         
-        run_id = self._start_run_record()
-        total_pips = 0
-        wins = 0
-        trades = []
+        run_id = self._create_run_header()
+        performance = {"total_pips": 0.0, "wins": 0, "signals": []}
         
-        # Use M5 as the master timeline, filtered by target dates
-        common_m5_index = []
-        for d in all_data.values():
-            filtered_idx = d['m5'].index[(d['m5'].index >= self.start_date) & (d['m5'].index <= self.end_date)]
-            common_m5_index.extend(filtered_idx)
-        common_m5_index = sorted(list(set(common_m5_index)))
-        
-        if not common_m5_index:
-            return {"error": "No data found for the specified date range"}
+        # Build the master simulation timeline
+        timeline = self._build_simulation_timeline(all_data)
+        print(f"\n🚀 Simulation Active: {len(timeline)} cycles across {len(strategies)} strategies.")
 
-        print(f"🚀 Simulating {len(common_m5_index)} M5 cycles across {len(active_strategies)} strategies...")
-        
-        for i, ts in enumerate(common_m5_index):
+        for i, ts in enumerate(timeline):
             if progress_callback and i % 100 == 0:
-                progress_callback(i / len(common_m5_index))
-                await asyncio.sleep(0) # Yield to event loop to keep API responsive
-            
+                progress_callback(i / len(timeline))
+                await asyncio.sleep(0)
+
             for symbol, tfs in all_data.items():
-                m5_full = tfs['m5']
-                if ts not in m5_full.index: continue
+                if ts not in tfs['entry'].index:
+                    continue
                 
-                idx_m5 = m5_full.index.get_loc(ts)
-                if idx_m5 < 100: continue
-                
-                # Align timeframes
-                h1_full = tfs['h1']
-                h1_visible = h1_full[h1_full.index <= ts]
-                if len(h1_visible) < 20: continue
-                
-                d1_full = tfs['d1']
-                d1_visible = d1_full[d1_full.index <= ts]
-                
+                # Snapshot context for this specific bar
+                entry_df = tfs['entry']
+                idx_entry = entry_df.index.get_loc(ts)
+                if idx_entry < 100: continue
+
                 data_bundle = {
-                    'm5': m5_full.iloc[max(0, idx_m5-200):idx_m5+1],
-                    'h1': h1_visible,
-                    'd1': d1_visible
+                    'entry': entry_df.iloc[:idx_entry+1],
+                    'h1': tfs['h1'][tfs['h1'].index <= ts],
+                    'd1': tfs['d1'][tfs['d1'].index <= ts]
                 }
                 
-                # Run all enabled strategies
-                for strategy in active_strategies:
-                    signal = await strategy.analyze(symbol, data_bundle, [], {})
-                    
-                    if signal:
-                        # 4. Gate Enforcement (No Pyramiding & Cooling Period)
-                        # Don't trade if already in symbol OR if we traded this symbol in last 4 hours
-                        last_trade = next((t for t in reversed(trades) if t['symbol'] == symbol), None)
-                        if last_trade:
-                            if last_trade['result'] == 'OPEN':
-                                continue
-                            
-                            # Cooling period: 4 hours
-                            last_ts = datetime.fromisoformat(last_trade['timestamp'])
-                            if (ts - last_ts).total_seconds() < 4 * 3600:
-                                continue
+                # Add M15 if available for CRT fallback
+                if 'm15' in tfs:
+                    data_bundle['m15'] = tfs['m15'][tfs['m15'].index <= ts]
 
-                        print(f"\n🎯 {strategy.get_name()} SIGNAL: {ts} {symbol} {signal['direction']} @ {signal['entry_price']}")
-                        # 5. Outcome Simulation using future M5 data
-                        outcome = self._simulate_outcome(m5_full.iloc[idx_m5+1:], signal)
-                        
-                        trades.append({
-                            'run_id': run_id,
-                            'strategy_name': strategy.get_name(),
-                            'symbol': symbol,
-                            'direction': signal['direction'],
-                            'entry_price': signal['entry_price'],
-                            'sl': signal['sl'],
-                            'tp1': signal['tp1'],
+                for strategy in strategies:
+                    signal = await strategy.analyze(symbol, data_bundle, [], {})
+                    if not signal:
+                        continue
+
+                    # Execute Gate Validation
+                    gate = ExecutionGate.validate(
+                        signal, self.results_db, DB_CLIENTS, 
+                        table_name='backtest_signals', current_ts=ts
+                    )
+
+                    trade_record = self._create_trade_record(run_id, strategy, symbol, ts, signal, gate)
+                    
+                    if gate['status'] == 'PASSED':
+                        outcome = self._simulate_exit(entry_df.iloc[idx_entry+1:], signal)
+                        trade_record.update({
                             'result': outcome['result'],
                             'result_pips': outcome['pips'],
-                            'gate_status': 'PASSED',
-                            'gate_reason': 'BACKTEST',
-                            'regime': signal.get('regime', 'UNKNOWN'),
-                            'quality_score': signal.get('quality_score', 0),
-                            'timestamp': ts.isoformat(),
                             'closed_at': outcome['closed_at']
                         })
-                        
-                        if outcome['pips'] > 0: wins += 1
-                        total_pips += outcome['pips']
-            
-            await asyncio.sleep(0) # Yield again after symbol loop
+                        if outcome['pips'] > 0: performance['wins'] += 1
+                        performance['total_pips'] += outcome['pips']
 
-        self._save_signals(trades)
-        self._finalize_run_record(run_id, len(trades), wins, total_pips)
-        
+                    performance['signals'].append(trade_record)
+                    self._persist_signal(trade_record)
+            
+            await asyncio.sleep(0)
+
+        self._finalize_run(run_id, performance)
         return {
             "run_id": run_id,
-            "total_trades": len(trades),
-            "win_rate": (wins / len(trades) * 100) if trades else 0,
-            "net_pips": total_pips
+            "total_trades": len([s for s in performance['signals'] if s['result'] != 'BLOCKED']),
+            "win_rate": (performance['wins'] / len([s for s in performance['signals'] if s['result'] != 'BLOCKED']) * 100) if any(s['result'] != 'BLOCKED' for s in performance['signals']) else 0,
+            "net_pips": performance['total_pips']
         }
 
-    def _simulate_outcome(self, future_df: pd.DataFrame, signal: dict) -> dict:
-        """Checks subsequent candles for SL or TP hits with R-multiple reporting."""
-        entry = signal['entry_price']
-        sl = signal['sl']
-        tp = signal['tp1']
-        direction = signal['direction']
-        symbol = signal['symbol']
+    def _create_trade_record(self, run_id: int, strategy: Any, symbol: str, ts: datetime, signal: Dict, gate: Dict) -> Dict:
+        return {
+            'run_id': run_id,
+            'strategy_name': strategy.get_name(),
+            'symbol': symbol,
+            'direction': signal['direction'],
+            'entry_price': signal['entry_price'],
+            'sl': signal['sl'],
+            'tp1': signal['tp1'],
+            'result': 'BLOCKED' if gate['status'] == 'BLOCKED' else 'OPEN',
+            'result_pips': 0.0,
+            'gate_status': gate['status'],
+            'gate_reason': gate['reason'],
+            'regime': signal.get('regime', 'UNKNOWN'),
+            'quality_score': signal.get('quality_score', 0.0),
+            'timestamp': ts.isoformat(),
+            'closed_at': ts.isoformat() if gate['status'] == 'BLOCKED' else None
+        }
+
+    def _simulate_exit(self, future_df: pd.DataFrame, signal: Dict) -> Dict:
+        """
+        Models exit conditions with realistic execution friction (Spread + Slippage).
+        V5.1.1: Institutional Audit Mode
+        """
+        from config.config import SPREAD_PIPS, SLIPPAGE_PIPS
+        if future_df.empty:
+            return {'result': 'OPEN', 'pips': 0, 'closed_at': None}
+
+        # Conversion: JPY pairs use 0.01 as 1 pip, others use 0.0001
+        is_jpy = "JPY" in signal['symbol']
+        pip_value = 0.01 if is_jpy else 0.0001
         
-        # Risk in price units
-        risk_price = abs(entry - sl)
-        if risk_price == 0: return {'result': 'ERROR', 'pips': 0, 'closed_at': None}
+        # Total execution friction in price points
+        total_friction = (SPREAD_PIPS + SLIPPAGE_PIPS) * pip_value
+
+        entry, sl, tp = float(signal['entry_price']), float(signal['sl']), float(signal['tp1'])
+        direction = signal['direction'].upper()
+        
+        # Original risk for R-multiple calculation
+        risk = abs(entry - sl)
+        if risk <= 0: return {'result': 'ERROR', 'pips': 0, 'closed_at': None}
 
         for ts, row in future_df.iterrows():
-            high = row['high']
-            low = row['low']
+            high, low = row['high'], row['low']
             
             if direction == 'BUY':
-                # Check if both hit in the same bar
-                if low <= sl and high >= tp:
-                    # Tie-breaker: use candle direction or 50/50
-                    # For conservative backtesting, we can still favor SL or use a mid-point
-                    # but let's use the bar's Close vs Open to guess the path
-                    if row['close'] > row['open']: # Bullish bar, likely hit TP first or closed high
-                         return {'result': 'TP1', 'pips': abs(tp - entry) / risk_price, 'closed_at': ts.isoformat()}
-                    else:
-                         return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
-                
-                if low <= sl: return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
-                if high >= tp: return {'result': 'TP1', 'pips': abs(tp - entry) / risk_price, 'closed_at': ts.isoformat()}
+                # BUY SL is bid-based. Slippage effectively moves SL "closer" to entry in bid terms.
+                # BUY TP is ask-based. Spread makes TP "farther" from current bid.
+                if low <= (sl + total_friction): 
+                    return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
+                if high >= (tp + total_friction): 
+                    net_tp_win = abs(tp - entry) - total_friction
+                    return {'result': 'TP1', 'pips': net_tp_win / risk, 'closed_at': ts.isoformat()}
             else:
-                if high >= sl and low <= tp:
-                    if row['close'] < row['open']: # Bearish bar
-                        return {'result': 'TP1', 'pips': abs(entry - tp) / risk_price, 'closed_at': ts.isoformat()}
-                    else:
-                        return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
-
-                if high >= sl: return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
-                if low <= tp: return {'result': 'TP1', 'pips': abs(entry - tp) / risk_price, 'closed_at': ts.isoformat()}
+                # SELL SL is ask-based. Spread moves SL "closer" to entry in ask terms.
+                # SELL TP is bid-based. Slippage makes TP "farther" from current bid.
+                if high >= (sl - total_friction): 
+                    return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
+                if low <= (tp - total_friction): 
+                    net_tp_win = abs(entry - tp) - total_friction
+                    return {'result': 'TP1', 'pips': net_tp_win / risk, 'closed_at': ts.isoformat()}
                 
         return {'result': 'OPEN', 'pips': 0, 'closed_at': None}
 
-    def _start_run_record(self) -> int:
-        with sqlite3.connect(self.results_db) as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO backtest_runs (run_name, start_date, end_date) VALUES (?, ?, ?)",
-                         ("Historical Logic Test", self.start_date, self.end_date))
-            return cursor.lastrowid
+    def _build_simulation_timeline(self, data: Dict) -> List[datetime]:
+        """Aggregates all timestamps for unified master timeline."""
+        ts_set = set()
+        for sym in data.values():
+            filtered = sym['entry'].index[(sym['entry'].index >= self.start_date) & (sym['entry'].index <= self.end_date)]
+            ts_set.update(filtered)
+        return sorted(list(ts_set))
 
-    def _save_signals(self, trades: List[dict]):
-        with sqlite3.connect(self.results_db) as conn:
-            for t in trades:
-                conn.execute("""
-                    INSERT INTO backtest_signals (
-                        run_id, strategy_name, symbol, direction, entry_price, sl, tp1, 
-                        result, result_pips, gate_status, gate_reason, 
-                        regime, quality_score, timestamp, closed_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    t['run_id'], t.get('strategy_name', 'UNKNOWN'), t['symbol'], t['direction'], t['entry_price'], 
-                    t['sl'], t['tp1'], t['result'], t['result_pips'], 
-                    t['gate_status'], t['gate_reason'], t['regime'], 
-                    t['quality_score'], t['timestamp'], t['closed_at']
-                ))
+    async def _fetch_all_symbol_data(self) -> Dict[str, Dict[str, pd.DataFrame]]:
+        """Handles MTF data loading with fallback logic."""
+        from data.fetcher import DataFetcher
+        processed = {}
+        
+        # Define ranges (padded for indicator warmup)
+        start_dt = datetime.strptime(self.start_date, '%Y-%m-%d')
+        h1_start = (start_dt - timedelta(days=30)).strftime('%Y-%m-%d')
+        m5_start = max((datetime.now() - timedelta(days=59)).strftime('%Y-%m-%d'), 
+                       (start_dt - timedelta(days=5)).strftime('%Y-%m-%d'))
+        d1_start = (start_dt - timedelta(days=730)).strftime('%Y-%m-%d')
+        fetch_end = (datetime.strptime(self.end_date, '%Y-%m-%d') + timedelta(days=2)).strftime('%Y-%m-%d')
 
-    def _finalize_run_record(self, run_id: int, total: int, wins: int, pips: float):
-        wr = (wins / total * 100) if total > 0 else 0
+        for symbol in self.symbols:
+            try:
+                m5 = await DataFetcher.fetch_range_async(symbol, "5m", m5_start, fetch_end)
+                m15 = await DataFetcher.fetch_range_async(symbol, "15m", m5_start, fetch_end)
+                h1 = await DataFetcher.fetch_range_async(symbol, "1h", h1_start, fetch_end)
+                d1 = await DataFetcher.fetch_range_async(symbol, "1d", d1_start, fetch_end)
+                
+                if h1 is None or d1 is None or (m5 is None and m15 is None):
+                    continue
+
+                processed[symbol] = {
+                    'entry': IndicatorCalculator.add_indicators(m5 if m5 is not None else m15, "5m" if m5 is not None else "15m"),
+                    'h1': IndicatorCalculator.add_indicators(h1, "1h"),
+                    'd1': IndicatorCalculator.add_indicators(d1, "1d")
+                }
+                if m5 is not None and m15 is not None:
+                    processed[symbol]['m15'] = IndicatorCalculator.add_indicators(m15, "15m")
+
+            except Exception as e:
+                print(f"⚠️ Data Fetch Error [{symbol}]: {str(e)}")
+        return processed
+
+    def _create_run_header(self) -> int:
+        with sqlite3.connect(self.results_db) as conn:
+            return conn.execute("INSERT INTO backtest_runs (run_name, start_date, end_date) VALUES (?,?,?)",
+                               ("Institutional Audit", self.start_date, self.end_date)).lastrowid
+
+    def _persist_signal(self, t: Dict) -> None:
         with sqlite3.connect(self.results_db) as conn:
             conn.execute("""
-                UPDATE backtest_runs SET
-                    total_trades = ?, win_rate = ?, net_pips = ?,
-                    max_drawdown = 0.0, sharpe_ratio = 1.0
-                WHERE id = ?
-            """, (total, wr, pips, run_id))
+                INSERT INTO backtest_signals (
+                    run_id, strategy_name, symbol, direction, entry_price, sl, tp1, 
+                    result, result_pips, gate_status, gate_reason, regime, quality_score, timestamp, closed_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (t['run_id'], t['strategy_name'], t['symbol'], t['direction'], t['entry_price'], 
+                  t['sl'], t['tp1'], t['result'], t['result_pips'], t['gate_status'], 
+                  t['gate_reason'], t['regime'], t['quality_score'], t['timestamp'], t['closed_at']))
+
+    def _finalize_run(self, run_id: int, perf: Dict) -> None:
+        executed = [s for s in perf['signals'] if s['result'] != 'BLOCKED']
+        wr = (perf['wins'] / len(executed) * 100) if executed else 0
+        with sqlite3.connect(self.results_db) as conn:
+            conn.execute("UPDATE backtest_runs SET total_trades = ?, win_rate = ?, net_pips = ? WHERE id = ?",
+                        (len(executed), wr, perf['total_pips'], run_id))

@@ -15,12 +15,25 @@ class IndicatorCalculator:
         if df.empty:
             return df
 
+        # Safety: flatten MultiIndex columns (yfinance can return these)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        # Deduplicate column names if present (can happen after flatten)
+        if df.columns.duplicated().any():
+            df = df.loc[:, ~df.columns.duplicated()]
+
+        # Standardize column casing (V35.1 Recovery)
+        df.columns = [c.lower() for c in df.columns]
+
         # EMAs
         df[f'ema_{EMA_FAST}'] = ta.ema(df['close'], length=EMA_FAST)
         df[f'ema_{EMA_SLOW}'] = ta.ema(df['close'], length=EMA_SLOW)
         
         df[f'ema_{EMA_TREND}'] = ta.ema(df['close'], length=EMA_TREND)
         df['ema_20'] = ta.ema(df['close'], length=20)
+        df['ema_50'] = ta.ema(df['close'], length=50)
+        df['ema_100'] = ta.ema(df['close'], length=100)
         df['ema_200'] = ta.ema(df['close'], length=200)  # For swing strategy mean reversion
 
         # RSI
@@ -160,50 +173,9 @@ class IndicatorCalculator:
     def get_market_regime(df: pd.DataFrame) -> str:
         """
         Detects the current market regime based on volatility and trend.
-        Returns: 'TRENDING', 'RANGING', or 'CHOPPY'
-        
-        V26.3 CRITICAL FIX: The previous EMA slope threshold of 0.05 was designed for
-        raw pip values on pairs like USDJPY (150.0 price), but is far too strict for
-        pairs like AUDUSD (0.63 price) or GBPUSD (1.28 price).
-        
-        Fix: Use a NORMALIZED slope (slope / close_price) to make the threshold
-        symbol-agnostic. Threshold is now 0.0003 (0.03% per bar) which correctly
-        classifies trending markets across all symbols.
-        
-        Additionally: If |zscore_20| > 1.5, the market is statistically confirmed 
-        to be trending regardless of slope — this prevents regime misclassification 
-        during strong macro moves.
+        V35.0: Relays to Unified Core Registry.
         """
-        if len(df) < 50: return "CHOPPY"
-        
-        atr_now = df.iloc[-1].get('atr')
-        atr_avg = df['atr'].rolling(50).mean().iloc[-1]
-        
-        if atr_now is None or atr_avg is None: return "CHOPPY"
-        
-        vol_ratio = atr_now / atr_avg if atr_avg != 0 else 1.0
-        adx = df.iloc[-1].get('adx', 0)
-        
-        raw_slope = IndicatorCalculator.calculate_ema_slope(df, f'ema_{EMA_TREND}')
-        close_price = df.iloc[-1].get('close', 1.0)
-        # Normalize: slope as % of price, prevents symbol-scale bias
-        norm_slope = abs(raw_slope) / max(close_price, 0.0001)
-        
-        # Z-score override: large z-score = market is stretched far from mean = trending
-        zscore = df.iloc[-1].get('zscore_20', 0.0) or 0.0
-        
-        # CHOPPY: Low volatility or very weak ADX
-        if vol_ratio < 0.9 or (adx > 0 and adx < 20):
-            return "CHOPPY"
-
-        # TRENDING: V26.3 — lowered threshold to 0.0003 (normalized) + z-score override
-        # Either: clear directional slope OR statistically extreme z-score
-        is_sloping   = vol_ratio > 1.2 and norm_slope > 0.0003
-        is_stretched = abs(zscore) > 1.5  # Statistically far from mean = trend
-
-        if is_sloping or is_stretched:
-            if adx == 0 or adx > 25:
-                return "TRENDING"
-        
-        return "RANGING"
+        from core.market_regime import detect_regime
+        res = detect_regime(df)
+        return res['regime']
 

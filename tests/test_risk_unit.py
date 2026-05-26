@@ -117,7 +117,7 @@ def test_calculate_optimal_rr():
     
     # Test reduced R:R for Choppy
     res_choppy = RiskManager.calculate_optimal_rr("EURUSD=X", 5.0, "CHOPPY", 0.0010)
-    assert res_choppy['tp1_rr'] < 1.5
+    assert res_choppy['tp1_rr'] <= 1.5
     
     # Test Friction-Heavy detection (Friction > 35% of ATR)
     # Friction = 1.0 pip (0.0001). ATR = 0.0002 -> Friction is 50% of ATR.

@@ -5,12 +5,14 @@ from fastapi.testclient import TestClient
 
 from admin_server import app, get_current_user
 
-# Mock authentication
-app.dependency_overrides[get_current_user] = lambda: {"username": "admin"}
-client = TestClient(app)
+@pytest.fixture
+def client():
+    app.dependency_overrides[get_current_user] = lambda: {"username": "admin"}
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 @patch("admin_server.get_db_connection")
-def test_toggle_strategy_endpoint_success(mock_get_db):
+def test_toggle_strategy_endpoint_success(mock_get_db, client):
     # Mock DB
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
@@ -22,7 +24,7 @@ def test_toggle_strategy_endpoint_success(mock_get_db):
     assert response.status_code == 200
     assert response.json()["enabled"] == True
 
-def test_toggle_strategy_rejects_crt():
+def test_toggle_strategy_rejects_crt(client):
     response = client.post("/api/strategies/crt/toggle")
     assert response.status_code == 403
     assert "cannot be disabled" in response.json()["detail"]

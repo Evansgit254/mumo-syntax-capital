@@ -390,7 +390,7 @@ async def update_config(update: ConfigUpdate, current_user: User = Depends(get_c
         conn = get_db_connection(DB_CLIENTS)
         conn.execute("UPDATE system_config SET value = ? WHERE key = ?", (str(update.value), update.key))
         conn.commit()
-        return {{"status": "success", "key": update.key, "value": update.value}}
+        return {"status": "success", "key": update.key, "value": update.value}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

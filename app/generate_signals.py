@@ -92,6 +92,7 @@ async def generate_signals():
             # Fetch multi-timeframe data
             m5_data = await fetcher.fetch_data_async(symbol, "5m", period="5d")
             h1_data = await fetcher.fetch_data_async(symbol, "1h", period="30d")
+            d1_data = await fetcher.fetch_data_async(symbol, "1d", period="365d")
             
             
             # V16.1: Market Status Check (Prevent stale data processing)
@@ -101,16 +102,18 @@ async def generate_signals():
                 # print(f"zzz Market Closed for {symbol}")
                 continue
 
-            if m5_data.empty or h1_data.empty:
+            if m5_data.empty or h1_data.empty or d1_data.empty:
                 continue
                 
             # Add indicators
             m5_df = IndicatorCalculator.add_indicators(m5_data, "5m")
             h1_df = IndicatorCalculator.add_indicators(h1_data, "1h")
+            d1_df = IndicatorCalculator.add_indicators(d1_data, "1d")
             
             data_bundle = {
                 'm5': m5_df,
-                'h1': h1_df
+                'h1': h1_df,
+                'd1': d1_df
             }
             
             # V25.1: Gold-Specific Specialized Engine Bypass

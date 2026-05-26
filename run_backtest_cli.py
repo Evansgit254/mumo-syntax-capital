@@ -1,15 +1,37 @@
 import asyncio
+import argparse
 from datetime import datetime, timedelta
 from core.backtest_engine import BacktestEngine
+from version import get_system_banner
 
 async def main():
-    # Set range for last 30 days (yfinance M5 limit is 60d)
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+    parser = argparse.ArgumentParser(description="SMC Institutional Backtest Engine")
+    parser.add_argument("--recent", action="store_true", 
+                       help="Backtest last 30 days (where M5 data exists, CRT gets full representation)")
+    parser.add_argument("--days", type=int, default=30,
+                       help="Number of days to backtest (default: 30)")
+    parser.add_argument("--start", type=str, default=None,
+                       help="Custom start date (YYYY-MM-DD)")
+    parser.add_argument("--end", type=str, default=None,
+                       help="Custom end date (YYYY-MM-DD)")
+    args = parser.parse_args()
+
+    if args.start and args.end:
+        start_date = args.start
+        end_date = args.end
+    elif args.recent:
+        # V36.0: Default to last X days where ALL data (including M5) is available
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=args.days)).strftime('%Y-%m-%d')
+    else:
+        # Standard: backtest the specified number of days
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=args.days)).strftime('%Y-%m-%d')
     
+    print(get_system_banner())
     print(f"🕵️  STARTING INSTITUTIONAL BACKTEST")
     print(f"📅 Range: {start_date} to {end_date}")
-    print(f"⚙️  Alpha Core: CRT Strategy + Regime Detection")
+    print(f"⚙️  Alpha Core: CRT + Session Clock + SMC Sweep + Advanced Patterns")
     print("=" * 50)
     
     engine = BacktestEngine(start_date, end_date)

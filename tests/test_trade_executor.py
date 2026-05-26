@@ -22,8 +22,9 @@ async def test_paper_trade_execution(executor):
     }
     
     with patch("core.trade_executor._executor", executor):
-        with patch.object(executor, "_log_paper_trade") as mock_log:
-            result = await executor.execute_trade(signal)
+        with patch("config.config.MT5_SYMBOL_SUFFIX", "c"): # Ensure suffix test passes
+            with patch.object(executor, "_log_paper_trade") as mock_log:
+                result = await executor.execute_trade(signal)
             
             assert result["status"] == "paper"
             assert result["symbol"] == "EURUSDc"  # Testing the suffix addition

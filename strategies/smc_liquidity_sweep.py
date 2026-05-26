@@ -19,9 +19,11 @@ class SMCLiquiditySweepStrategy(BaseStrategy):
     """
 
     # Symbols with <15% WR in audit — statistically proven losers
-    BANNED_SYMBOLS = {"CL=F", "AUDUSD=X", "USDJPY=X"}
-    # Hours with 0-8% WR in audit
-    BANNED_HOURS = {10, 14, 18, 19}
+    # V35.1r: Added GBPUSD (-6.67R) and GBPJPY (-3.33R) — forensic audit Run 26
+    # V36.0: Added GC=F — 0/7 BUY WR (-7.0R) in Run 29. Gold exclusive to GoldQuantStrategy.
+    BANNED_SYMBOLS = {"CL=F", "AUDUSD=X", "USDJPY=X", "BTC-USD", "GBPUSD=X", "GBPJPY=X", "GC=F"}
+    # Hours with 0-8% WR in audit. V24.1: Added 11 (Dead Zone)
+    BANNED_HOURS = {10, 11, 14, 18, 19}
 
     def get_id(self) -> str:
         return "smc_sweep_v1"
@@ -102,7 +104,7 @@ class SMCLiquiditySweepStrategy(BaseStrategy):
             sl = entry - sl_dist if direction == "BUY" else entry + sl_dist
             tp = entry + tp_dist if direction == "BUY" else entry - tp_dist
             
-            risk_details = RiskManager.calculate_lot_size(symbol, entry, sl)
+            risk_details = RiskManager.calculate_lot_size(symbol, entry, sl, hour=current_hour)
 
             return {
                 'strategy_id': self.get_id(),
@@ -117,7 +119,7 @@ class SMCLiquiditySweepStrategy(BaseStrategy):
                 'tp1': tp,
                 'tp2': tp,
                 'confidence': 2.0,
-                'quality_score': 8.0,
+                'quality_score': 8.5, # Elevated from 8.0 for better selectivity
                 'regime': 'LIQUIDITY_SWEEP',
                 'macro_bias': 'CONTRARIAN',
                 'risk_details': risk_details,

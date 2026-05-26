@@ -1,11 +1,14 @@
 import pytest
 from fastapi.testclient import TestClient
 from admin_server import app
+from unittest.mock import patch
 import sqlite3
 import os
 from datetime import datetime, timedelta
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    return TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_test_dbs(tmp_path):
@@ -56,7 +59,11 @@ def setup_test_dbs(tmp_path):
             regime TEXT,
             expected_hold TEXT,
             risk_details TEXT,
-            score_details TEXT
+            score_details TEXT,
+            forensic_candles TEXT,
+            forensic_events TEXT,
+            gate_status TEXT,
+            gate_reason TEXT
         )
     """)
     conn.commit()
@@ -87,23 +94,21 @@ def setup_test_dbs(tmp_path):
          patch('config.config.DB_SIGNALS', signals_db):
         yield
 
-from unittest.mock import patch
-
 @pytest.fixture
-def auth_headers():
+def auth_headers(client):
     # Login to get token
     response = client.post("/api/token", data={"username": "admin", "password": "admin123"})
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
-def test_read_clients(auth_headers):
+def test_read_clients(client, auth_headers):
     response = client.get("/api/clients", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
     assert data[0]['telegram_chat_id'] == '123'
 
-def test_update_client(auth_headers):
+def test_update_client(client, auth_headers):
     update_data = {
         "account_balance": 1500.0,
         "subscription_days": 30,
@@ -120,16 +125,16 @@ def test_update_client(auth_headers):
     assert updated['subscription_tier'] == 'GOLD'
     assert updated['subscription_expiry'] is not None
 
-def test_update_non_existent_client(auth_headers):
+def test_update_non_existent_client(client, auth_headers):
     response = client.post("/api/clients/999", json={"account_balance": 100}, headers=auth_headers)
     assert response.status_code == 404
 
-def test_read_signals_empty(auth_headers):
+def test_read_signals_empty(client, auth_headers):
     response = client.get("/api/signals", headers=auth_headers)
     assert response.status_code == 200
     assert response.json() == []
 
-def test_get_stats(auth_headers):
+def test_get_stats(client, auth_headers):
     response = client.get("/api/stats", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
@@ -137,7 +142,7 @@ def test_get_stats(auth_headers):
     assert data['signals_today'] == 0
     assert 'server_time' in data
 
-def test_update_client_all_fields(auth_headers):
+def test_update_client_all_fields(client, auth_headers):
     update_data = {
         "account_balance": 2000.0,
         "risk_percent": 3.5,
@@ -156,11 +161,11 @@ def test_update_client_all_fields(auth_headers):
     assert updated['subscription_tier'] == 'PLATINUM'
     assert updated['is_active'] == 0
 
-def test_update_client_no_fields(auth_headers):
+def test_update_client_no_fields(client, auth_headers):
     response = client.post("/api/clients/123", json={}, headers=auth_headers)
     assert response.status_code == 200
 
-def test_get_signals_with_data(tmp_path, auth_headers):
+def test_get_signals_with_data(client, tmp_path, auth_headers):
     signals_db = str(tmp_path / "signals_test.db")
     # Insert a mock signal
     conn = sqlite3.connect(signals_db)
@@ -185,7 +190,11 @@ def test_get_signals_with_data(tmp_path, auth_headers):
             regime TEXT,
             expected_hold TEXT,
             risk_details TEXT,
-            score_details TEXT
+            score_details TEXT,
+            forensic_candles TEXT,
+            forensic_events TEXT,
+            gate_status TEXT,
+            gate_reason TEXT
         )
     """)
     conn.execute("INSERT INTO signals (symbol, direction, entry_price, sl, tp1, tp2, confidence) VALUES ('EURUSD', 'BUY', 1.10, 1.09, 1.11, 1.12, 0.9)")
@@ -198,7 +207,7 @@ def test_get_signals_with_data(tmp_path, auth_headers):
         assert len(response.json()) == 1
         assert response.json()[0]['symbol'] == 'EURUSD'
 
-def test_daily_analytics(tmp_path, auth_headers):
+def test_daily_analytics(client, tmp_path, auth_headers):
     signals_db = str(tmp_path / "signals_analytics.db")
     conn = sqlite3.connect(signals_db)
     conn.execute("""
@@ -231,7 +240,7 @@ def test_daily_analytics(tmp_path, auth_headers):
         assert data['assets'][0]['symbol'] == 'EURUSD'
         assert data['assets'][0]['count'] == 2
 
-def test_toggle_signals(auth_headers):
+def test_toggle_signals(client, auth_headers):
     # Initial state is 1
     response = client.post("/api/clients/123/toggle-signals", headers=auth_headers)
     assert response.status_code == 200
@@ -241,16 +250,16 @@ def test_toggle_signals(auth_headers):
     assert response.status_code == 200
     assert response.json()['is_active'] == 1
 
-def test_quick_extend(auth_headers):
+def test_quick_extend(client, auth_headers):
     response = client.post("/api/clients/123/extend?days=15", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()['status'] == "success"
 
-def test_get_current_user_invalid_token():
+def test_get_current_user_invalid_token(client):
     response = client.get("/api/clients", headers={"Authorization": "Bearer invalid"})
     assert response.status_code == 401
 
-def test_login_invalid_creds():
+def test_login_invalid_creds(client):
     response = client.post("/api/token", data={"username": "admin", "password": "wrong"})
     assert response.status_code == 401
 

@@ -35,7 +35,8 @@ def test_flash_crash_scenario():
     
     # Check regime detection
     regime = IndicatorCalculator.get_market_regime(df)
-    assert regime in ["TRENDING", "RANGING", "CHOPPY"]  # Should not crash
+    valid_regimes = ['TRENDING_BULL', 'TRENDING_BEAR', 'RANGING', 'CHOPPY', 'LOW_VOL_RANGE', 'VOLATILE_RANGE']
+    assert regime in valid_regimes
 
 def test_nan_in_data_handling():
     """Test graceful handling of NaN values in OHLC data"""
@@ -76,9 +77,9 @@ def test_zero_volatility_market():
     # ATR should be minimal
     assert df['atr'].iloc[-1] < 0.0001
     
-    # Regime should be CHOPPY or RANGING
+    # Regime should be CHOPPY or RANGING or LOW_VOL_RANGE
     regime = IndicatorCalculator.get_market_regime(df)
-    assert regime in ["CHOPPY", "RANGING"]
+    assert regime in ["CHOPPY", "RANGING", "LOW_VOL_RANGE"]
 
 def test_extreme_gap_weekend():
     """Test handling of weekend gaps (Sunday open vs Friday close)"""

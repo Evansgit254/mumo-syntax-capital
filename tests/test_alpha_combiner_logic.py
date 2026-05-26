@@ -9,8 +9,8 @@ def test_alpha_combiner_basic_buy():
         'relative': 1.0    # Outperforming benchmark
     }
     
-    signal = AlphaCombiner.combine(factors, regime="TRENDING")
-    # With TRENDING weights: velocity=0.7, zscore=0.1
+    signal = AlphaCombiner.combine(factors, regime="TRENDING_BULL")
+    # With TRENDING_BULL weights: velocity=0.7, zscore=0.1
     # 2.0 * 0.7 + (-2.5) * 0.1 = 1.4 - 0.25 = 1.15
     assert signal > 1.0
 
@@ -22,7 +22,7 @@ def test_alpha_combiner_basic_sell():
         'relative': -1.0   # Lagging benchmark
     }
     
-    signal = AlphaCombiner.combine(factors, regime="TRENDING")
+    signal = AlphaCombiner.combine(factors, regime="TRENDING_BEAR")
     # Should be negative
     assert signal < -1.0
 

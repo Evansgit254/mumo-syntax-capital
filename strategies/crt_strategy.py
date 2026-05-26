@@ -24,6 +24,10 @@ class CRTStrategy(BaseStrategy):
     def get_name(self) -> str:
         return "Candle Range Theory (H1)"
 
+    # Forensic Audit (Run 22/24) - Toxic Filters
+    TOXIC_SYMBOLS = {"BTC-USD", "CL=F"}
+    TOXIC_HOURS = {21, 22, 11} # 11:00 is the inter-session Dead Zone
+
     async def analyze(
         self,
         symbol: str,
@@ -32,6 +36,9 @@ class CRTStrategy(BaseStrategy):
         market_context: dict,
     ) -> Optional[dict]:
         try:
+            # ─── 0. Forensic Blacklist ───
+            if symbol in self.TOXIC_SYMBOLS:
+                return None
             df_h1  = data.get("h1")
             df_d1  = data.get("d1")
             df_m5  = data.get("m5")
@@ -80,10 +87,22 @@ class CRTStrategy(BaseStrategy):
             ref_eq     = (ref_high + ref_low) / 2.0
             range_size = ref_high - ref_low
             
+            # V34.2: ATR Range Filter (0.4 - 2.5x ATR)
+            atr_h1 = ref_h1.get("atr") or 0.0010
+            if atr_h1 > 0:
+                ratio = range_size / atr_h1
+                if not (0.4 <= ratio <= 2.5):
+                    log_event("FILTER_BLOCKED", f"H1 Range {round(ratio, 2)}x ATR outside bounds (0.4-2.5)")
+                    return None
+            
             # ─── 3. ICT Killzone Filter ─────────────────────────────────────────
             timestamp = df_h1.index[-1]
             if hasattr(timestamp, "hour"):
                 hour = timestamp.hour
+                # Forensic: Block high-failure hours (NY Close)
+                if hour in self.TOXIC_HOURS:
+                    return None
+                    
                 if not (7 <= hour < 12 or 12 <= hour < 18):
                     return None
             else:
@@ -123,14 +142,36 @@ class CRTStrategy(BaseStrategy):
             if not direction or entry_price is None or sweep_extreme is None:
                 return None
 
-            # ─── 5. SL Placement (Institutional Extreme) ────────────────────────
+            # V34.1: Enforce Daily Bias alignment
+            if daily_bias and direction != daily_bias:
+                log_event("FILTER_BLOCKED", f"Counter-trend entry: {direction} against {daily_bias} D1 bias")
+                return None
+
+            # ─── 5. SL & TP Placement (Regime Optimized) ────────────────────────
+            reg = AlphaCombiner.detect_regime(df_h1)
+            # Boost targets in Low Vol or Trending markets to capture expansion
+            target_boost = 1.8 if reg == "LOW_VOL_RANGE" else (1.4 if "TRENDING" in reg else 1.0)
+            
             if direction == "BUY":
                 sl = sweep_extreme - (range_size * 0.05)
-                tp0, tp1, tp2 = ref_eq, ref_high, ref_high + (ref_high - ref_eq)
+                # Dynamic TP scaling
+                dist_to_tp0 = abs(ref_eq - entry_price) * target_boost
+                dist_to_tp1 = abs(ref_high - entry_price) * target_boost
+                
+                tp0 = entry_price + dist_to_tp0
+                tp1 = entry_price + dist_to_tp1
+                tp2 = tp1 + (tp1 - tp0)
+                
                 if not (entry_price < tp1): return None
             else:
                 sl = sweep_extreme + (range_size * 0.05)
-                tp0, tp1, tp2 = ref_eq, ref_low, ref_low - (ref_eq - ref_low)
+                dist_to_tp0 = abs(ref_eq - entry_price) * target_boost
+                dist_to_tp1 = abs(ref_low - entry_price) * target_boost
+                
+                tp0 = entry_price - dist_to_tp0
+                tp1 = entry_price - dist_to_tp1
+                tp2 = tp1 - (tp0 - tp1)
+                
                 if not (entry_price > tp1): return None
 
             risk = abs(entry_price - sl)
@@ -147,6 +188,16 @@ class CRTStrategy(BaseStrategy):
             # V33.2: Re-enable EMA filter but allow tight sweeps near EMA
             if not trend_aligned:
                 log_event("FILTER_BLOCKED", "Counter-trend entry too far from EMA200")
+                return None
+
+            # V34.2: Macro & News Filters
+            macro_bias = MacroFilter.get_macro_bias(market_context)
+            if not MacroFilter.is_macro_safe(symbol, direction, macro_bias):
+                log_event("FILTER_BLOCKED", "Macro conditions unsafe (DXY/VIX/Trend)")
+                return None
+            
+            if news_events and not NewsFilter.is_safe_to_trade(news_events, symbol):
+                log_event("FILTER_BLOCKED", "News event risk detected")
                 return None
 
             # ─── 7. Alpha Combiner & Scoring ────────────────────────────────────
@@ -173,7 +224,7 @@ class CRTStrategy(BaseStrategy):
                 return None
 
             # ─── 8. Risk & Results ──────────────────────────────────────────────
-            risk_details = RiskManager.calculate_lot_size(symbol, entry_price, sl)
+            risk_details = RiskManager.calculate_lot_size(symbol, entry_price, sl, hour=hour)
 
             signal = {
                 "strategy_id": self.get_id(), "strategy_name": self.get_name(),

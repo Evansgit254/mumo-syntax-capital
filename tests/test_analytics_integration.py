@@ -97,8 +97,8 @@ def test_analytics_api():
         assert scalp['wins'] == 1
         assert scalp['losses'] == 1
         
-        # Verify Swing Stats
-        swing = data['stats_by_type']['SWING']
+        # Verify CRT Stats (Formerly SWING)
+        swing = data['stats_by_type']['CRT']
         assert swing['total'] == 2
         assert swing['wins'] == 1 # NZDUSD Win
         

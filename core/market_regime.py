@@ -72,55 +72,85 @@ def _calc_adx(df, period=14) -> float:
         return 20.0  # Neutral fallback
 
 
-def detect_regime(h1_data_map: dict) -> dict:
+def detect_regime(data_source, period=50) -> dict:
     """
-    Detect market regime from H1 data across symbols.
+    Improved 4-Cluster Regime Detector (V35.0)
     
     Args:
-        h1_data_map: {symbol: h1_dataframe} dict
+        data_source: Either {symbol: h1_df} dict OR a single pd.DataFrame.
+        period: Lookback for ATR/Trend averaging.
 
     Returns:
         {
-            'regime': 'TRENDING' | 'MIXED' | 'RANGING',
-            'adx_avg': float,
-            'quality_threshold': float,
-            'detail': str
+            'regime': 'TRENDING_BULL' | 'TRENDING_BEAR' | 'VOLATILE_RANGE' | 'LOW_VOL_RANGE',
+            'adx': float,
+            'vol_ratio': float,
+            'quality_threshold': float
         }
     """
-    adx_scores = []
+    # 1. Normalize input to a single dataframe for local or first in map for global
+    if isinstance(data_source, dict):
+        # Global: Process first symbol as proxy or potentially average (Simplified for Phase A)
+        symbol = list(data_source.keys())[0]
+        df = data_source[symbol]
+    else:
+        df = data_source
 
-    for symbol, df in h1_data_map.items():
-        if df is None or df.empty:
-            continue
-        adx = _calc_adx(df)
-        adx_scores.append(adx)
-
-    if not adx_scores:
+    if df is None or len(df) < period:
         return {
-            'regime': 'MIXED',
-            'adx_avg': 20.0,
-            'quality_threshold': QUALITY_MIXED,
-            'detail': 'No data — neutral defaults applied'
+            'regime': 'LOW_VOL_RANGE', 'adx': 20.0, 'vol_ratio': 1.0, 
+            'quality_threshold': QUALITY_MIXED
         }
 
-    adx_avg = round(np.mean(adx_scores), 2)
-
-    if adx_avg >= ADX_TRENDING:
-        regime    = 'TRENDING'
-        threshold = QUALITY_TRENDING
-        detail    = f"ADX={adx_avg:.1f} — Market is TRENDING. Standard quality filter active."
-    elif adx_avg >= ADX_MIXED:
-        regime    = 'MIXED'
-        threshold = QUALITY_MIXED
-        detail    = f"ADX={adx_avg:.1f} — Market is MIXED. Moderate quality filter active."
+    last = df.iloc[-1]
+    
+    # 1. Trend Strength (ADX)
+    adx = _calc_adx(df)
+    
+    # 2. Volatility (ATR Ratio)
+    atr_now = last.get('atr', 0)
+    atr_avg = df['atr'].tail(period).mean()
+    vol_ratio = atr_now / atr_avg if (atr_avg and atr_avg != 0) else 1.0
+    
+    # 3. Directional Spread (Normalized EMA Distance)
+    # Using EMA20 vs EMA200 for long-term trend orientation
+    ema_short = last.get('ema_20', 0)
+    ema_long = last.get('ema_200', 0) or last.get('ema_trend', 0)
+    close = last.get('close', 1.0)
+    spread = (ema_short - ema_long) / close if close != 0 else 0
+    
+    # --- Clustering Logic ---
+    # Thresholds: ADX > 25 for trend, ATR_Ratio > 1.2 for volatile
+    if adx > 25:
+        if spread > 0.005: 
+            regime = "TRENDING_BULL"
+        elif spread < -0.005: 
+            regime = "TRENDING_BEAR"
+        else:
+            regime = "VOLATILE_RANGE"  # Strong ADX but no clear EMA spread = Volatile
+    elif vol_ratio > 1.2:
+        regime = "VOLATILE_RANGE"
     else:
-        regime    = 'RANGING'
-        threshold  = QUALITY_RANGING
-        detail    = f"ADX={adx_avg:.1f} — Market is RANGING/CHOPPY. Strict quality filter active."
+        regime = "LOW_VOL_RANGE"
+
+    # Map thresholds to the new clusters
+    thresholds = {
+        "TRENDING_BULL": QUALITY_TRENDING,
+        "TRENDING_BEAR": QUALITY_TRENDING,
+        "VOLATILE_RANGE": QUALITY_MIXED,
+        "LOW_VOL_RANGE": QUALITY_RANGING
+    }
+    
+    threshold = thresholds.get(regime, QUALITY_MIXED)
+    adx_str = f"ADX={adx:.1f}"
+    vol_str = f"VolRatio={vol_ratio:.2f}"
+    spread_str = f"Spread={spread:.4f}"
+    detail = f"{adx_str} | {vol_str} | {spread_str} → Regime: {regime}"
 
     return {
         'regime': regime,
-        'adx_avg': adx_avg,
+        'adx': adx,
+        'vol_ratio': round(vol_ratio, 2),
         'quality_threshold': threshold,
         'detail': detail
     }

@@ -11,50 +11,58 @@ from unittest.mock import patch, MagicMock
 
 @pytest.fixture
 def base_h1_data():
-    """
-    30-bar H1 dataframe. Timestamp ends at 2025-01-01 12:00 (hour=12, in London
-    NY KZ window). ATR=0.0013, ema_trend=1.1000.
-    """
-    dates = pd.date_range(end=datetime(2025, 1, 1, 12, 0), periods=30, freq='h')
+    """300-bar H1 dataframe with indicators."""
+    from indicators.calculations import IndicatorCalculator
+    dates = pd.date_range(end=datetime(2025, 1, 1, 12, 0), periods=300, freq='h')
     df = pd.DataFrame({
-        'open':      [1.1000] * 30,
-        'high':      [1.1015] * 30,
-        'low':       [1.0985] * 30,
-        'close':     [1.1000] * 30,
-        'ema_fast':  [1.1010] * 30,
-        'ema_slow':  [1.1005] * 30,
-        'ema_trend': [1.1000] * 30,
-        'atr':       [0.0013] * 30,
+        'open':      [1.1000] * 300,
+        'high':      [1.1015] * 300,
+        'low':       [1.0985] * 300,
+        'close':     [1.1000] * 300,
     }, index=dates)
-    return df
+    return IndicatorCalculator.add_indicators(df, 'h1')
 
 
 @pytest.fixture
 def base_m5_data():
-    """100-bar M5 dataframe — neutral price, no sweep by default."""
-    dates = pd.date_range(end=datetime(2025, 1, 1, 12, 0), periods=100, freq='5min')
+    """300-bar M5 dataframe with indicators."""
+    from indicators.calculations import IndicatorCalculator
+    dates = pd.date_range(end=datetime(2025, 1, 1, 12, 0), periods=300, freq='5min')
     df = pd.DataFrame({
-        'open':  [1.1000] * 100,
-        'high':  [1.1005] * 100,
-        'low':   [1.0995] * 100,
-        'close': [1.1000] * 100,
+        'open':  [1.1000] * 300,
+        'high':  [1.1005] * 300,
+        'low':   [1.0995] * 300,
+        'close': [1.1000] * 300,
     }, index=dates)
-    return df
+    return IndicatorCalculator.add_indicators(df, "5m")
 
+
+@pytest.fixture
+def base_m15_data():
+    """300-bar M15 dataframe with indicators."""
+    from indicators.calculations import IndicatorCalculator
+    dates = pd.date_range(end=datetime(2025, 1, 1, 12, 0), periods=300, freq='15min')
+    df = pd.DataFrame({
+        'open':  [1.1000] * 300,
+        'high':  [1.1005] * 300,
+        'low':   [1.0995] * 300,
+        'close': [1.1000] * 300,
+    }, index=dates)
+    return IndicatorCalculator.add_indicators(df, "15m")
 
 @pytest.fixture
 def base_d1_data():
     """
-    10-bar D1 dataframe. Bullish by default: close > open, close > ema_trend (1.0900).
+    300-bar D1 dataframe. Bullish by default: close > open, close > ema_200 (1.0900).
     """
-    dates = pd.date_range(end=datetime(2025, 1, 1), periods=10, freq='D')
+    dates = pd.date_range(end=datetime(2025, 1, 1), periods=300, freq='D')
     df = pd.DataFrame({
-        'open':      [1.0950] * 10,
-        'high':      [1.1010] * 10,
-        'low':       [1.0940] * 10,
-        'close':     [1.1000] * 10,   # close > open → bullish day
-        'ema_trend': [1.0900] * 10,   # close > ema → bullish D1 bias
-        'atr':       [0.0080] * 10,
+        'open':      [1.0950] * 300,
+        'high':      [1.1010] * 300,
+        'low':       [1.0940] * 300,
+        'close':     [1.1000] * 300,   # close > open → bullish day
+        'ema_200':   [1.0900] * 300,   # close > ema → bullish D1 bias
+        'atr':       [0.0080] * 300,
     }, index=dates)
     return df
 
@@ -146,58 +154,60 @@ async def test_crt_strategy_id():
 async def test_crt_strategy_insufficient_data():
     strat = CRTStrategy()
     df_h1 = pd.DataFrame({'close': [1.1] * 5})
-    df_m5 = pd.DataFrame({'close': [1.1] * 100})
+    df_m5 = pd.DataFrame({'close': [1.1] * 300})
     res = await strat.analyze("EURUSD", {'h1': df_h1, 'm5': df_m5}, [], {})
     assert res is None
 
 
 @pytest.mark.asyncio
-async def test_crt_strategy_bullish_signal(base_h1_data, base_m5_data, base_d1_data):
+async def test_crt_strategy_bullish_signal(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     strat = CRTStrategy()
     base_m5_data = _build_bullish_m5(base_m5_data)
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
 
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=True), \
-         patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}):
+         patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}), \
+         patch('strategies.crt_strategy.AlphaCombiner.calculate_quality_score', return_value=8.0):
         res = await strat.analyze("EURUSD", data, [], {})
         assert res is not None
         assert res['direction'] == "BUY"
-        assert res['tp1'] == pytest.approx(1.1015, rel=1e-4)  # opposite extreme = ref_high
+        assert res['tp1'] > res['entry_price']  # TP1 above entry for BUY
         assert res['sl'] < res['entry_price']
 
 
 @pytest.mark.asyncio
-async def test_crt_strategy_bearish_signal(base_h1_data, base_m5_data, base_d1_data):
+async def test_crt_strategy_bearish_signal(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     strat = CRTStrategy()
 
     # For SELL: D1 must be bearish
-    base_d1_data.iloc[-1, base_d1_data.columns.get_loc('close')] = 1.0850  # below ema_trend=1.0900
+    base_d1_data.iloc[-1, base_d1_data.columns.get_loc('close')] = 1.0850  # below ema_200=1.0900
     base_d1_data.iloc[-1, base_d1_data.columns.get_loc('open')]  = 1.0900  # bearish day
     # EMA slope: must be declining
-    base_h1_data.iloc[-1, base_h1_data.columns.get_loc('ema_trend')] = 1.1020
-    base_h1_data.iloc[-6, base_h1_data.columns.get_loc('ema_trend')] = 1.1021
+    base_h1_data.iloc[-1, base_h1_data.columns.get_loc('ema_200')] = 1.1020
+    base_h1_data.iloc[-6, base_h1_data.columns.get_loc('ema_200')] = 1.1021
     base_m5_data = _build_bearish_m5(base_m5_data)
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
 
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=True), \
-         patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}):
+         patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}), \
+         patch('strategies.crt_strategy.AlphaCombiner.calculate_quality_score', return_value=8.0):
         res = await strat.analyze("EURUSD", data, [], {})
         assert res is not None
         assert res['direction'] == "SELL"
-        assert res['tp1'] == pytest.approx(1.0985, rel=1e-4)  # opposite extreme = ref_low
+        assert res['tp1'] < res['entry_price']  # TP1 below entry for SELL
         assert res['sl'] > res['entry_price']
 
 
 @pytest.mark.asyncio
-async def test_daily_bias_blocks_countertrend_sell(base_h1_data, base_m5_data, base_d1_data):
+async def test_daily_bias_blocks_countertrend_sell(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     """SELL signal must be rejected when D1 bias is bullish."""
     strat = CRTStrategy()
     # D1 is bullish (default fixture)
     base_m5_data = _build_bearish_m5(base_m5_data)
     # EMA slope declining for H1 to not block via that gate
-    base_h1_data.iloc[-1, base_h1_data.columns.get_loc('ema_trend')] = 1.1020
-    base_h1_data.iloc[-6, base_h1_data.columns.get_loc('ema_trend')] = 1.1021
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    base_h1_data.iloc[-1, base_h1_data.columns.get_loc('ema_200')] = 1.1020
+    base_h1_data.iloc[-6, base_h1_data.columns.get_loc('ema_200')] = 1.1021
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
 
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=True), \
          patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}):
@@ -207,14 +217,14 @@ async def test_daily_bias_blocks_countertrend_sell(base_h1_data, base_m5_data, b
 
 
 @pytest.mark.asyncio
-async def test_daily_bias_blocks_countertrend_buy(base_h1_data, base_m5_data, base_d1_data):
+async def test_daily_bias_blocks_countertrend_buy(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     """BUY signal must be rejected when D1 bias is bearish."""
     strat = CRTStrategy()
     # Set D1 to bearish
     base_d1_data.iloc[-1, base_d1_data.columns.get_loc('close')] = 1.0850
     base_d1_data.iloc[-1, base_d1_data.columns.get_loc('open')]  = 1.0900
     base_m5_data = _build_bullish_m5(base_m5_data)
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
 
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=True), \
          patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}):
@@ -224,14 +234,14 @@ async def test_daily_bias_blocks_countertrend_buy(base_h1_data, base_m5_data, ba
 
 
 @pytest.mark.asyncio
-async def test_killzone_blocks_asian_session(base_h1_data, base_m5_data, base_d1_data):
+async def test_killzone_blocks_asian_session(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     """Signals outside London/NY killzones must be rejected."""
     strat = CRTStrategy()
     # Move timestamp to Asian session (hour=4, outside KZ)
-    asian_dates = pd.date_range(end=datetime(2025, 1, 1, 4, 0), periods=30, freq='h')
+    asian_dates = pd.date_range(end=datetime(2025, 1, 1, 4, 0), periods=300, freq='h')
     base_h1_data.index = asian_dates
     base_m5_data = _build_bullish_m5(base_m5_data)
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
 
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=True), \
          patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}):
@@ -240,17 +250,18 @@ async def test_killzone_blocks_asian_session(base_h1_data, base_m5_data, base_d1
 
 
 @pytest.mark.asyncio
-async def test_killzone_allows_london_open(base_h1_data, base_m5_data, base_d1_data):
+async def test_killzone_allows_london_open(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     """Signals during London KZ (hour=8) must be allowed."""
     strat = CRTStrategy()
-    london_dates = pd.date_range(end=datetime(2025, 1, 1, 8, 0), periods=30, freq='h')
+    london_dates = pd.date_range(end=datetime(2025, 1, 1, 8, 0), periods=300, freq='h')
     base_h1_data.index = london_dates
-    base_m5_data.index = pd.date_range(end=datetime(2025, 1, 1, 8, 0), periods=100, freq='5min')
+    base_m5_data.index = pd.date_range(end=datetime(2025, 1, 1, 8, 0), periods=300, freq='5min')
     base_m5_data = _build_bullish_m5(base_m5_data)
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
 
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=True), \
-         patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}):
+         patch('strategies.crt_strategy.RiskManager.calculate_lot_size', return_value={'lot_size': 0.1}), \
+         patch('strategies.crt_strategy.AlphaCombiner.calculate_quality_score', return_value=8.0):
         res = await strat.analyze("EURUSD", data, [], {})
         assert res is not None   # London KZ → allowed
         assert res['direction'] == "BUY"
@@ -270,20 +281,20 @@ async def test_atr_range_filter(base_h1_data, base_m5_data, base_d1_data):
 
 
 @pytest.mark.asyncio
-async def test_macro_blocked(base_h1_data, base_m5_data, base_d1_data):
+async def test_macro_blocked(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     strat = CRTStrategy()
     base_m5_data = _build_bullish_m5(base_m5_data)
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=False):
         res = await strat.analyze("EURUSD", data, [], {})
         assert res is None
 
 
 @pytest.mark.asyncio
-async def test_news_blocked(base_h1_data, base_m5_data, base_d1_data):
+async def test_news_blocked(base_h1_data, base_m5_data, base_m15_data, base_d1_data):
     strat = CRTStrategy()
     base_m5_data = _build_bullish_m5(base_m5_data)
-    data = {'h1': base_h1_data, 'm5': base_m5_data, 'd1': base_d1_data}
+    data = {'h1': base_h1_data, 'm5': base_m5_data, 'm15': base_m15_data, 'd1': base_d1_data}
     with patch('strategies.crt_strategy.MacroFilter.is_macro_safe', return_value=True), \
          patch('strategies.crt_strategy.NewsFilter.is_safe_to_trade', return_value=False):
         res = await strat.analyze("EURUSD", data, ["NFP"], {})

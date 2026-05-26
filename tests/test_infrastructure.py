@@ -14,7 +14,6 @@ def test_yfinance_live_connection():
     assert df is not None, f"Failed to fetch data for {symbol}"
     assert not df.empty, f"Received empty DataFrame for {symbol}"
     assert "close" in df.columns
-    
     # Data Integrity Check: No NaN in latest bar
     latest_bar = df.iloc[-1]
     assert not pd.isna(latest_bar["close"]), "Latest close price is NaN"
@@ -39,11 +38,13 @@ async def test_get_latest_data_bundle():
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr("config.config.SYMBOLS", ["EURUSD=X"])
         data_bundle = await DataFetcher.get_latest_data()
-        
         assert isinstance(data_bundle, dict)
         assert "EURUSD=X" in data_bundle
-        assert isinstance(data_bundle["EURUSD=X"], pd.DataFrame)
-        assert not data_bundle["EURUSD=X"].empty
+        assert isinstance(data_bundle["EURUSD=X"], dict)
+        assert "d1" in data_bundle["EURUSD=X"]
+        assert isinstance(data_bundle["EURUSD=X"]["d1"], pd.DataFrame)
+        assert len(data_bundle["EURUSD=X"]) > 0
+        assert not data_bundle["EURUSD=X"]["d1"].empty
 
 @pytest.mark.authentic
 def test_dxy_availability():

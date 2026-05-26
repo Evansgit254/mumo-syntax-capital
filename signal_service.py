@@ -351,7 +351,7 @@ class SignalService:
         print("="*60)
         
         if not self.telegram.bot:
-            print("⚠️  WARNING: Telegram not configured. Signals will be generated but not broadcast.")
+            print("⚠️  FATAL: Telegram not configured. Signals will be generated but not broadcast.")
         
         while self.running:
             try:

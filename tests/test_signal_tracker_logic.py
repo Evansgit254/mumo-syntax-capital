@@ -24,7 +24,10 @@ def mock_db(tmp_path):
             tp2 REAL,
             result TEXT DEFAULT 'OPEN',
             max_tp_reached INTEGER DEFAULT 0,
-            closed_at TIMESTAMP
+            closed_at TIMESTAMP,
+            result_pips REAL DEFAULT 0.0,
+            gate_status TEXT DEFAULT 'PASSED',
+            risk_details TEXT DEFAULT '{}'
         )
     """)
     
@@ -40,6 +43,15 @@ def mock_db(tmp_path):
         VALUES ('GBPUSD=X', 'SELL', 1.3000, 1.3100, 1.2950, 1.2900, 1.2800, 'OPEN', 0)
     """)
     
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS paper_account (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            balance REAL DEFAULT 100000.0,
+            equity REAL DEFAULT 100000.0,
+            last_daily_reset_date TEXT
+        )
+    """)
+    conn.execute("INSERT OR IGNORE INTO paper_account (id, balance, equity) VALUES (1, 100000.0, 100000.0)")
     conn.commit()
     conn.close()
     return db_test
@@ -50,11 +62,10 @@ async def test_track_once_buy_sl(mock_db):
     with patch('signal_tracker.DB_PATH', mock_db):
         # Mock yfinance to return price at SL
         with patch('yfinance.Ticker') as mock_ticker:
-            mock_hist = MagicMock()
             import pandas as pd
-            mock_hist.empty = False
-            mock_hist.__getitem__.return_value = pd.Series([1.0850], index=[datetime.now()]) # Below SL
-            mock_ticker.return_value.history.return_value = mock_hist
+            # Create a real DataFrame to ensure iloc and indexing work perfectly
+            mock_data = pd.DataFrame({'Close': [1.0850]}, index=[datetime.now()])
+            mock_ticker.return_value.history.return_value = mock_data
             
             await tracker.track_once()
             
@@ -71,11 +82,9 @@ async def test_track_once_buy_tp3(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
         with patch('yfinance.Ticker') as mock_ticker:
-            mock_hist = MagicMock()
             import pandas as pd
-            mock_hist.empty = False
-            mock_hist.__getitem__.return_value = pd.Series([1.1250], index=[datetime.now()]) # Above TP3
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_data = pd.DataFrame({'Close': [1.1250]}, index=[datetime.now()])
+            mock_ticker.return_value.history.return_value = mock_data
             
             await tracker.track_once()
             
@@ -92,11 +101,9 @@ async def test_track_once_buy_tp1_hold(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
         with patch('yfinance.Ticker') as mock_ticker:
-            mock_hist = MagicMock()
             import pandas as pd
-            mock_hist.empty = False
-            mock_hist.__getitem__.return_value = pd.Series([1.1070], index=[datetime.now()]) # Above TP1 but below TP2
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_data = pd.DataFrame({'Close': [1.1070]}, index=[datetime.now()])
+            mock_ticker.return_value.history.return_value = mock_data
             
             await tracker.track_once()
             
@@ -112,11 +119,9 @@ async def test_track_once_sell_tp2(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
         with patch('yfinance.Ticker') as mock_ticker:
-            mock_hist = MagicMock()
             import pandas as pd
-            mock_hist.empty = False
-            mock_hist.__getitem__.return_value = pd.Series([1.2850], index=[datetime.now()]) # Below TP2
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_data = pd.DataFrame({'Close': [1.2850]}, index=[datetime.now()])
+            mock_ticker.return_value.history.return_value = mock_data
             
             await tracker.track_once()
             
@@ -152,11 +157,9 @@ async def test_track_once_sell_sl(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
         with patch('yfinance.Ticker') as mock_ticker:
-            mock_hist = MagicMock()
             import pandas as pd
-            mock_hist.empty = False
-            mock_hist.__getitem__.return_value = pd.Series([1.3150], index=[datetime.now()]) # Above SL
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_data = pd.DataFrame({'Close': [1.3150]}, index=[datetime.now()])
+            mock_ticker.return_value.history.return_value = mock_data
             
             await tracker.track_once()
             
@@ -172,11 +175,9 @@ async def test_track_once_sell_tp1_hold(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
         with patch('yfinance.Ticker') as mock_ticker:
-            mock_hist = MagicMock()
             import pandas as pd
-            mock_hist.empty = False
-            mock_hist.__getitem__.return_value = pd.Series([1.2930], index=[datetime.now()]) # Below TP1
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_data = pd.DataFrame({'Close': [1.2930]}, index=[datetime.now()])
+            mock_ticker.return_value.history.return_value = mock_data
             
             await tracker.track_once()
             
@@ -234,12 +235,9 @@ async def test_track_once_sell_tp3(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
         with patch('yfinance.Ticker') as mock_ticker:
-            mock_hist = MagicMock()
-            from datetime import datetime
             import pandas as pd
-            mock_hist.empty = False
-            mock_hist.__getitem__.return_value = pd.Series([1.2750], index=[datetime.now()]) # Below TP3
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_data = pd.DataFrame({'Close': [1.2750]}, index=[datetime.now()])
+            mock_ticker.return_value.history.return_value = mock_data
             
             await tracker.track_once()
             

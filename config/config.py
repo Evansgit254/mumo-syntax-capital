@@ -88,18 +88,63 @@ SLIPPAGE_PIPS = 0.2 # Expected Execution Slippage
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_CLIENTS = os.path.join(BASE_DIR, "database/clients.db")
 DB_SIGNALS = os.path.join(BASE_DIR, "database/signals.db")
-# V22.2 PER-SYMBOL ALPHA WEIGHTS (IC-Derived from 60-day analysis)
-# Format: { symbol: { regime: { factor: weight } } }
+# V35.1r: PER-SYMBOL ALPHA WEIGHTS — expanded to 4-cluster regime model
+# Old "TRENDING" key never matched TRENDING_BULL/TRENDING_BEAR, causing silent fallback.
 SYMBOL_ALPHA_WEIGHTS = {
-    "EURUSD=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
-    "GBPUSD=X": {"TRENDING": {"velocity": 0.2, "zscore": 0.5, "momentum": 0.2, "volatility": 0.1}},
-    "USDJPY=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
-    "NZDUSD=X": {"TRENDING": {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1}},
-    "AUDUSD=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.7, "momentum": 0.1, "volatility": 0.1}},
-    "GBPJPY=X": {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
-    "GC=F":     {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.1, "volatility": 0.7}},
-    "CL=F":     {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
-    "BTC-USD":  {"TRENDING": {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1}},
+    "EURUSD=X": {
+        "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.3, "zscore": 0.5, "momentum": 0.1, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+    },
+    "GBPUSD=X": {
+        "TRENDING_BULL":  {"velocity": 0.2, "zscore": 0.5, "momentum": 0.2, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.2, "zscore": 0.5, "momentum": 0.2, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.3, "zscore": 0.4, "momentum": 0.2, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+    },
+    "USDJPY=X": {
+        "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.2, "zscore": 0.4, "momentum": 0.3, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+    },
+    "NZDUSD=X": {
+        "TRENDING_BULL":  {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.3, "zscore": 0.4, "momentum": 0.2, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+    },
+    "AUDUSD=X": {
+        "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.7, "momentum": 0.1, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.7, "momentum": 0.1, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.3, "zscore": 0.4, "momentum": 0.2, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+    },
+    "GBPJPY=X": {
+        "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.2, "zscore": 0.3, "momentum": 0.4, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+    },
+    "GC=F": {
+        "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.1, "volatility": 0.7},
+        "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.1, "volatility": 0.7},
+        "VOLATILE_RANGE": {"velocity": 0.2, "zscore": 0.2, "momentum": 0.1, "volatility": 0.5},
+        "LOW_VOL_RANGE":  {"velocity": 0.3, "zscore": 0.4, "momentum": 0.1, "volatility": 0.2},
+    },
+    "CL=F": {
+        "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+    },
+    "BTC-USD": {
+        "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.2, "zscore": 0.3, "momentum": 0.3, "volatility": 0.2},
+        "LOW_VOL_RANGE":  {"velocity": 0.3, "zscore": 0.5, "momentum": 0.1, "volatility": 0.1},
+    },
 }
 
 

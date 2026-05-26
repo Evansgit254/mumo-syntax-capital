@@ -66,6 +66,7 @@ class QuantCoreStrategy(BaseStrategy):
                 'tp1': latest['close'] + (atr * 3.0) if direction == "BUY" else latest['close'] - (atr * 3.0),
                 'tp2': latest['close'] + (atr * 5.0) if direction == "BUY" else latest['close'] - (atr * 5.0),
                 'confidence': abs(alpha_signal),
+                'quality_score': abs(alpha_signal) * 5.0, # Scale to 0-10
                 'risk_details': risk_details,
                 'session': "Quant Engine Live",
                 'score_details': {

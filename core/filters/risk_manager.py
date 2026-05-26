@@ -35,6 +35,7 @@ class RiskManager:
     def calculate_lot_size(symbol: str, entry: float, sl: float, 
                            balance: float = None, 
                            risk_pct_override: float = None,
+                           hour: int = None,
                            db_path="database/signals.db") -> dict:
         """
         Calculates the recommended lot size with dynamic scaling.
@@ -46,7 +47,14 @@ class RiskManager:
         # Use provided balance or fallback to global config
         current_balance = balance if balance is not None else ACCOUNT_BALANCE
         base_risk_pct = risk_pct_override if risk_pct_override is not None else RISK_PER_TRADE_PERCENT
-        multiplier = 1.0
+        
+        # V24.5 Forensic Alpha Scaling (Power Hours)
+        # Audit (Run 24) showed 07:00 and 15:00 as massive outliers (>20R total)
+        power_multiplier = 1.0
+        if hour in [7, 15]:
+            power_multiplier = 1.25 # Accelerate risk in proven high-alpha windows
+            
+        multiplier = 1.0 * power_multiplier
         
         # V7.0 Performance-Based Scaling
         if os.path.exists(db_path):
@@ -239,11 +247,12 @@ class RiskManager:
         # Quality adjustment: higher quality = better R:R potential
         quality_multiplier = 1.0 + (quality_score - 5.0) / 10.0  # 0.5x to 1.5x
         
-        # Regime adjustment
+        # Regime adjustment (V14.5: 4-Cluster Optimization)
         regime_multiplier = {
-            "TRENDING": 1.3,
-            "RANGING": 1.0,
-            "CHOPPY": 0.8
+            "TRENDING_BULL": 1.5,   # High-conviction trend
+            "TRENDING_BEAR": 1.5,
+            "VOLATILE_RANGE": 1.2,
+            "LOW_VOL_RANGE": 1.3    # Boosted to ensure >1.5R in range extremes
         }.get(regime, 1.0)
         
         optimal_rr = base_rr * quality_multiplier * regime_multiplier

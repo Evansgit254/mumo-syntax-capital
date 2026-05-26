@@ -147,7 +147,8 @@ class SignalTracker:
                     """, (new_result, new_max_tp, closed_at, new_sl, pips, sig['id']))
                     
                     # If this was a paper trade closure, update paper balance
-                    if new_result != 'OPEN' and sig.get('gate_status') == 'PASSED':
+                    sig_dict = dict(sig)
+                    if new_result != 'OPEN' and sig_dict.get('gate_status') == 'PASSED':
                         # Mapping pips to dollars (Simplified: $10 per pip for a standard lot)
                         import json
                         lot_size = 0.1 # Default mini-lot

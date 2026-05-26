@@ -67,4 +67,4 @@ def test_get_market_regime_choppy():
     # Mock calculate_ema_slope to return 0
     with patch('indicators.calculations.IndicatorCalculator.calculate_ema_slope', return_value=0.0):
         regime = IndicatorCalculator.get_market_regime(df)
-        assert regime == "CHOPPY" or regime == "RANGING" # Depending on vol_ratio
+        assert regime in ["CHOPPY", "RANGING", "LOW_VOL_RANGE"]

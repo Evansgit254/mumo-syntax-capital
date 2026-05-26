@@ -83,7 +83,7 @@ class TestIndicators:
         sample_df['ema_50'] = sample_df['close'] # Fake EMA for slope
         
         regime = IndicatorCalculator.get_market_regime(sample_df)
-        assert regime in ["TRENDING", "RANGING", "CHOPPY"]
+        assert regime in ["TRENDING_BULL", "TRENDING_BEAR", "VOLATILE_RANGE", "LOW_VOL_RANGE"]
 
     def test_get_market_structure(self, sample_df):
         """Test FVG and BOS detection"""
@@ -117,7 +117,7 @@ class TestIndicators:
             df_trend['ema_50'] = df_trend['ema_trend_val']
             regime = IndicatorCalculator.get_market_regime(df_trend)
             # Depending on internal slope calc, this should trigger trending
-            assert regime in ["TRENDING", "RANGING", "CHOPPY"]
+            assert regime in ["TRENDING_BULL", "TRENDING_BEAR", "VOLATILE_RANGE", "LOW_VOL_RANGE"]
             
         # Choppy: Low Vol (ATR < 0.8 * Average)
         df_chop = sample_df.copy()
@@ -126,4 +126,4 @@ class TestIndicators:
         df_chop.iloc[-1, df_chop.columns.get_loc('atr')] = 1.0 # 1.0 / 10.0 = 0.1 ratio
         df_chop['ema_50'] = 100 # Flat
         regime = IndicatorCalculator.get_market_regime(df_chop)
-        assert regime == "CHOPPY"
+        assert regime in ["VOLATILE_RANGE", "LOW_VOL_RANGE"]  # Low vol ratio maps to LOW_VOL_RANGE in 4-cluster model

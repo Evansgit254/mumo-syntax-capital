@@ -77,6 +77,8 @@ class TestServerConfig(unittest.TestCase):
         # 1. Update Config via API
         new_risk = 5.5
         response = self.client.post("/api/config", json={"key": "risk_per_trade", "value": str(new_risk)}, headers=self.headers)
+        if response.status_code != 200:
+            print(f"ERROR: {response.json()}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["value"], str(new_risk))
 

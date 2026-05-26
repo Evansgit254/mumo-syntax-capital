@@ -30,49 +30,31 @@ async def test_session_clock_strategy_id():
     assert "Session Clock" in strat.get_name()
 
 @pytest.mark.asyncio
-async def test_session_clock_oil_buy():
+async def test_session_clock_oil_buy_blocked():
+    """Verify that the toxic 21:00 UTC Oil Buy is correctly blocked."""
     strat = SessionClockStrategy()
-    # 21:00 UTC is a BUY for OIL
     bt = datetime.combine(datetime.now().date(), time(21, 0), tzinfo=pytz.UTC)
-    df = pd.DataFrame({
-        'open': [100.0],
-        'high': [101.0],
-        'low': [99.5],
-        'close': [100.5],
-        'atr': [1.0]
-    }, index=[bt])
+    df = pd.DataFrame({'open': [100.0], 'high': [101.0], 'low': [99.5], 'close': [100.5], 'atr': [1.0]}, index=[bt])
     data = {'h1': df}
     
-    with patch('strategies.session_clock_strategy.IndicatorCalculator.get_market_regime', return_value="TRENDING"), \
+    with patch('strategies.session_clock_strategy.IndicatorCalculator.get_market_regime', return_value="TRENDING_BULL"), \
          patch('strategies.session_clock_strategy.MacroFilter.is_macro_safe', return_value=True):
         res = await strat.analyze("CL=F", data, [], {})
-        assert res is not None
-        assert res['direction'] == "BUY"
-        assert res['symbol'] == "CL=F"
-        assert res['entry_price'] == 100.0
+        assert res is None # Correctly blocked in V37
 
 @pytest.mark.asyncio
-async def test_session_clock_gold_buy():
+async def test_session_clock_gold_buy_blocked():
+    """Verify that the toxic 16:00 UTC Gold Buy is correctly blocked."""
     strat = SessionClockStrategy()
-    # 16:00 UTC is a BUY for GOLD
     bt = datetime.combine(datetime.now().date(), time(16, 0), tzinfo=pytz.UTC)
-    df = pd.DataFrame({
-        'open': [2000.0],
-        'high': [2010.0],
-        'low': [1995.0],
-        'close': [2005.0],
-        'atr': [10.0]
-    }, index=[bt])
+    df = pd.DataFrame({'open': [2000.0], 'high': [2010.0], 'low': [1995.0], 'close': [2005.0], 'atr': [10.0]}, index=[bt])
     data = {'h1': df}
     
-    # We should also mock RiskManager to avoid issues with environment variables
     with patch('strategies.session_clock_strategy.RiskManager.calculate_lot_size', return_value={'lots': 0.1}), \
-         patch('strategies.session_clock_strategy.IndicatorCalculator.get_market_regime', return_value="TRENDING"), \
+         patch('strategies.session_clock_strategy.IndicatorCalculator.get_market_regime', return_value="TRENDING_BULL"), \
          patch('strategies.session_clock_strategy.MacroFilter.is_macro_safe', return_value=True):
         res = await strat.analyze("GC=F", data, [], {})
-        assert res is not None
-        assert res['direction'] == "BUY"
-        assert res['entry_price'] == 2000.0
+        assert res is None # Correctly blocked in V37
 
 @pytest.mark.asyncio
 async def test_session_clock_friday_skip():

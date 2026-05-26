@@ -111,7 +111,7 @@ class SignalFormatter:
         if is_swing:
             # 💎 INSTITUTIONAL SWING THEME
             border = "█" * 45
-            header_text = f"🏛️ INSTITUTIONAL CRT POSITION 🏛️"
+            header_text = f"🏛️ INSTITUTIONAL SWING POSITION 🏛️"
             intensity_emoji = "💎💎💎"
             theme_color = "GOLD" # Conceptual
             main_icon = "🏆"
@@ -126,7 +126,7 @@ class SignalFormatter:
             bullet = "•"
 
         session_emoji = "🇬🇧" if "London Open" in session_name else "🇺🇸" if "Overlap" in session_name else "🌐"
-        prob_header = f" {intensity_emoji} HIGH PROBABILITY {intensity_emoji}" if is_high_prob else ""
+        prob_header = f"{intensity_emoji} HIGH PROBABILITY {intensity_emoji}" if is_high_prob else ""
         reasoning = SignalFormatter.generate_reasoning(signal)
         
         # Format output

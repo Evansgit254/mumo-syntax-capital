@@ -152,8 +152,29 @@ class DataFetcher:
     async def fetch_data_async(symbol: str, timeframe: str, period: str = "5d") -> Optional[pd.DataFrame]:
         """Asynchronous wrapper for fetch_data using threads."""
         import asyncio
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, DataFetcher.fetch_data, symbol, timeframe, period)
+        loop = asyncio.get_running_loop()
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, DataFetcher.fetch_data, symbol, timeframe, period),
+                timeout=120
+            )
+        except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+            logging.warning(f"Async fetch timed out/cancelled for {symbol} {timeframe}: {e}")
+            return None
+
+    @staticmethod
+    async def fetch_range_async(symbol: str, timeframe: str, start: str, end: str) -> Optional[pd.DataFrame]:
+        """Asynchronous wrapper for fetch_range using threads."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, DataFetcher.fetch_range, symbol, timeframe, start, end),
+                timeout=120
+            )
+        except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+            logging.warning(f"Async fetch_range timed out/cancelled for {symbol} {timeframe}: {e}")
+            return None
 
     @staticmethod
     async def get_latest_data(symbols: list = SYMBOLS) -> Dict[str, Dict[str, pd.DataFrame]]:
