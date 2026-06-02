@@ -412,7 +412,8 @@ class SignalService:
                 ("execution_error", "TEXT"),
                 ("data_timestamp", "TEXT"),
                 ("bar_closed", "INTEGER DEFAULT 1"),
-                ("idempotency_key", "TEXT")
+                ("idempotency_key", "TEXT"),
+                ("outcome", "TEXT")
             ]
             for col_name, col_def in required_cols:
                 try:
@@ -469,9 +470,9 @@ class SignalService:
                     trade_type, quality_score, regime, expected_hold, risk_details, score_details,
                     forensic_candles, forensic_events, gate_status, gate_reason,
                     signal_uid, execution_status, requested_price, requested_lot_size,
-                    data_timestamp, bar_closed, idempotency_key
+                    data_timestamp, bar_closed, idempotency_key, strategy
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(idempotency_key) DO NOTHING
             """, (
                 signal_ts,
@@ -501,7 +502,8 @@ class SignalService:
                 signal_data.get('lot_size') or signal_data.get('risk_details', {}).get('lots'),
                 signal_data.get('data_timestamp') or signal_ts,
                 1 if signal_data.get('bar_closed', True) else 0,
-                signal_data.get('idempotency_key') or self._signal_hash(signal_data)
+                signal_data.get('idempotency_key') or self._signal_hash(signal_data),
+                signal_data.get('strategy') or signal_data.get('strategy_name')
             ))
             conn.commit()
             return conn.execute("SELECT last_insert_rowid()").fetchone()[0]

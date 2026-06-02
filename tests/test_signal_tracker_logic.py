@@ -27,7 +27,10 @@ def mock_db(tmp_path):
             closed_at TIMESTAMP,
             result_pips REAL DEFAULT 0.0,
             gate_status TEXT DEFAULT 'PASSED',
-            risk_details TEXT DEFAULT '{}'
+            risk_details TEXT DEFAULT '{}',
+            status TEXT DEFAULT 'OPEN',
+            result_price REAL,
+            outcome TEXT
         )
     """)
     

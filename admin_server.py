@@ -192,7 +192,8 @@ def ensure_db_schema():
             ("slippage_pips", "REAL"),
             ("execution_error", "TEXT"),
             ("data_timestamp", "TEXT"),
-            ("bar_closed", "INTEGER DEFAULT 1")
+            ("bar_closed", "INTEGER DEFAULT 1"),
+            ("outcome", "TEXT")
         ]
         
         for col_name, col_def in required_cols:

@@ -49,8 +49,12 @@ class SignalTracker:
         conn = None
         try:
             conn = self.get_db_connection()
-            # Find all open signals
-            open_signals = conn.execute("SELECT * FROM signals WHERE result = 'OPEN'").fetchall()
+            # Find all open signals (exclude BLOCKED signals that were never executed)
+            open_signals = conn.execute("""
+                SELECT * FROM signals 
+                WHERE result = 'OPEN' 
+                  AND COALESCE(gate_status, 'PASSED') != 'BLOCKED'
+            """).fetchall()
             
             if not open_signals:
                 return
@@ -140,11 +144,24 @@ class SignalTracker:
                         
                     print(f"🎯 UPDATING {symbol} {direction}: {status_str} at {current_price:.5f} ({pips} pips)")
                     
+                    # Determine final status and outcome for closed trades
+                    new_status = 'CLOSED' if new_result != 'OPEN' else None
+                    outcome = None
+                    if new_result != 'OPEN':
+                        outcome = 'WIN' if new_result.startswith('TP') else 'LOSS'
+
                     conn.execute("""
                         UPDATE signals 
-                        SET result = ?, max_tp_reached = ?, closed_at = ?, sl = ?, result_pips = ?
+                        SET result = ?, max_tp_reached = ?, closed_at = ?, sl = ?, result_pips = ?,
+                            result_price = CASE WHEN ? != 'OPEN' THEN ? ELSE result_price END,
+                            status = CASE WHEN ? != 'OPEN' THEN 'CLOSED' ELSE status END,
+                            outcome = CASE WHEN ? != 'OPEN' THEN ? ELSE outcome END
                         WHERE id = ?
-                    """, (new_result, new_max_tp, closed_at, new_sl, pips, sig['id']))
+                    """, (new_result, new_max_tp, closed_at, new_sl, pips,
+                           new_result, current_price,
+                           new_result,
+                           new_result, outcome,
+                           sig['id']))
                     
                     # If this was a paper trade closure, update paper balance
                     sig_dict = dict(sig)

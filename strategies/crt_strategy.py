@@ -226,13 +226,29 @@ class CRTStrategy(BaseStrategy):
             # ─── 8. Risk & Results ──────────────────────────────────────────────
             risk_details = RiskManager.calculate_lot_size(symbol, entry_price, sl, hour=hour)
 
+            # Derive confidence from quality_score (0-10 → 0-100%)
+            confidence = min(100.0, round(quality_score * 10, 1))
+
+            # Build score audit trail
+            score_details = {
+                "alpha_factors": {k: round(v, 4) if isinstance(v, float) else v for k, v in factors.items()},
+                "signal_value": round(signal_value, 4) if isinstance(signal_value, (int, float)) else signal_value,
+                "base_boost": base_boost,
+                "regime": detected_regime,
+                "daily_bias": daily_bias,
+                "trend_aligned": trend_aligned,
+            }
+
             signal = {
                 "strategy_id": self.get_id(), "strategy_name": self.get_name(),
+                "strategy": self.get_name(),
                 "symbol": symbol, "direction": direction, "trade_type": "CRT",
                 "entry_price": round(entry_price, 5), "sl": round(sl, 5),
                 "tp0": round(tp0, 5), "tp1": round(tp1, 5), "tp2": round(tp2, 5),
-                "quality_score": quality_score, "regime": detected_regime,
-                "risk_details": risk_details, "forensic_events": forensic_events
+                "quality_score": quality_score, "confidence": confidence,
+                "regime": detected_regime, "expected_hold": "1-4H",
+                "risk_details": risk_details, "score_details": score_details,
+                "forensic_events": forensic_events
             }
 
             # VERIFICATION LOG (For manual audit)
