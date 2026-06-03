@@ -1580,7 +1580,7 @@ async def get_logs(service: str, lines: int = 100, current_user: User = Depends(
 
     # 2. Fallback to journalctl
     try:
-        cmd = ["journalctl", "--user", "-u", f"{service}.service", "-n", str(lines), "--no-pager"]
+        cmd = ["sudo", "journalctl", "-u", f"{service}.service", "-n", str(lines), "--no-pager"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         
         if result.returncode == 0 and result.stdout.strip():
@@ -1851,8 +1851,8 @@ def _run_management_command(action: str) -> dict:
 
     if action == "restart":
         commands = [
-            ["systemctl", "--user", "restart", "smc-signal-service.service"],
-            ["systemctl", "--user", "restart", "smc-signal-tracker.service"],
+            ["sudo", "systemctl", "restart", "smc-signal-service.service"],
+            ["sudo", "systemctl", "restart", "smc-signal-tracker.service"],
         ]
         outputs = []
         for cmd in commands:
