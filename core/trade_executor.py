@@ -469,17 +469,21 @@ class TradeExecutor:
         if not connected: return None
 
         try:
-            connection = self._account.get_rpc_connection()
-            await connection.connect()
-            await connection.wait_synchronized()
-
             mt5_sym = self._map_symbol(symbol)
             # Map common timeframes to MetaAPI naming if necessary
             # MetaAPI usually uses '1m', '5m', '1h' etc.
             tf_map = {"15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
             mapped_tf = tf_map.get(timeframe, timeframe)
 
-            candles = await connection.get_candles(mt5_sym, mapped_tf, None, limit)
+            # MetaAPI fetch works backwards from a given start_time.
+            # We use UTC now to get the most recent N candles.
+            candles = await self._account.get_historical_candles(
+                symbol=mt5_sym,
+                timeframe=mapped_tf,
+                start_time=datetime.utcnow(),
+                limit=limit
+            )
+            
             # Reformat to match our internal data structure
             return [
                 {
