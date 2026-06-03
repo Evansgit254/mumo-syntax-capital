@@ -170,7 +170,7 @@ class DataFetcher:
         provider = DataFetcher._get_provider()
 
         # 1. Attempt MT5 Broker Fetch if selected
-        if provider == "mt5" and not any(m in symbol for m in ["DXY", "TNX", "^TNX"]):
+        if provider == "mt5" and not any(m in symbol for m in ["DXY", "DX-Y", "TNX", "^TNX"]):
             try:
                 from core.trade_executor import get_executor
                 executor = get_executor()
