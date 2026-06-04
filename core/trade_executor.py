@@ -21,6 +21,7 @@ from typing import Optional, Dict, List
 
 from config.manager import config_manager
 from core.db_utils import connect_sqlite
+from core.direct_mt5_engine import DirectMT5Engine
 
 # Symbol mapping: yfinance → MT5 broker symbol
 SYMBOL_MAP = {
@@ -48,9 +49,16 @@ class TradeExecutor:
         self.auto_trade = settings.mt5_auto_trade
         self._api = None
         self._account = None
-        self._account_id = None
         self._token_hash = None
         self._connect_lock = asyncio.Lock()
+        
+        # Native Engine for Direct Windows Execution (V5.3.3)
+        self._direct_engine = DirectMT5Engine(
+            login=settings.mt5_login,
+            password=settings.mt5_password,
+            server=settings.mt5_server,
+            paper_mode=settings.mt5_paper_mode
+        )
 
     def _load_runtime_config(self):
         settings = config_manager.refresh()
@@ -149,6 +157,11 @@ class TradeExecutor:
         self._load_runtime_config()
         if not self.auto_trade:
             return {"status": "skipped", "reason": "MT5_AUTO_TRADE=false"}
+
+        settings = config_manager.snapshot()
+        if settings.mt5_use_direct:
+            print("🚀 [DIRECT MT5] Dispatching to Native Engine...")
+            return self._direct_engine.execute_trade(signal_data)
 
         symbol = str(signal_data.get("symbol") or "").strip()
         direction = str(signal_data.get("direction") or "").upper()
@@ -346,8 +359,34 @@ class TradeExecutor:
             return {"status": "error", "reason": str(e)}
 
     async def get_open_positions(self) -> List[Dict]:
-        """Fetch all open positions from MT5 via MetaAPI."""
+        """Fetch all open positions from MT5."""
         self._load_runtime_config()
+        
+        settings = config_manager.snapshot()
+        if settings.mt5_use_direct:
+            info = self._direct_engine.get_account_info()
+            # Note: Direct engine needs a get_positions method which I will add next
+            # Or I can use mt5.positions_get() if I modify direct_mt5_engine.py
+            # For now, I'll assume we add a proxy or call directly if we import mt5 here
+            import MetaTrader5 as mt5_lib
+            if mt5_lib.initialize():
+                positions = mt5_lib.positions_get()
+                return [
+                    {
+                        "id": p.ticket,
+                        "symbol": p.symbol,
+                        "direction": "BUY" if p.type == 0 else "SELL",
+                        "lot_size": p.volume,
+                        "open_price": p.price_open,
+                        "current_price": p.price_current,
+                        "profit": p.profit,
+                        "sl": p.sl,
+                        "tp": p.tp,
+                        "open_time": p.time
+                    } for p in (positions or [])
+                ]
+            return []
+
         if self.paper_mode or not self._has_live_credentials():
             # Return paper trades from DB
             try:
@@ -393,8 +432,33 @@ class TradeExecutor:
             return []
 
     async def close_trade(self, position_id: str) -> dict:
-        """Close an open position by ID."""
+        """Close an open position."""
         self._load_runtime_config()
+        
+        settings = config_manager.snapshot()
+        if settings.mt5_use_direct:
+            import MetaTrader5 as mt5_lib
+            if mt5_lib.initialize():
+                # We need the position info to close it
+                pos = mt5_lib.positions_get(ticket=int(position_id))
+                if not pos: return {"status": "error", "reason": "Position not found"}
+                p = pos[0]
+                request = {
+                    "action": mt5_lib.TRADE_ACTION_DEAL,
+                    "symbol": p.symbol,
+                    "volume": p.volume,
+                    "type": mt5_lib.ORDER_TYPE_SELL if p.type == 0 else mt5_lib.ORDER_TYPE_BUY,
+                    "position": p.ticket,
+                    "price": mt5_lib.symbol_info_tick(p.symbol).bid if p.type == 0 else mt5_lib.symbol_info_tick(p.symbol).ask,
+                    "deviation": 20,
+                    "magic": 20260605,
+                    "comment": "Direct close",
+                    "type_time": mt5_lib.ORDER_TIME_GTC,
+                    "type_filling": mt5_lib.ORDER_FILLING_IOC,
+                }
+                result = mt5_lib.order_send(request)
+                return {"status": "closed" if result.retcode == mt5_lib.TRADE_RETCODE_DONE else "error", "position_id": position_id}
+
         if self.paper_mode or not self._has_live_credentials():
             try:
                 conn = connect_sqlite(config_manager.get("db_signals"))

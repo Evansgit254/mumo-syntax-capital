@@ -1,42 +1,55 @@
 import sqlite3
 import pandas as pd
 
-def generate_dashboard(db_path, output_path):
+def generate_dashboard(db_path, output_path, run_id=None):
     conn = sqlite3.connect(db_path)
     
+    # Fetch the latest run_id if not specified
+    if run_id is None:
+        latest_run = pd.read_sql_query('SELECT id FROM backtest_runs ORDER BY id DESC LIMIT 1', conn)
+        if latest_run.empty:
+            print("❌ No backtest runs found in database.")
+            return
+        run_id = int(latest_run.iloc[0]['id'])
+    
     # Run Summary
-    run = pd.read_sql_query('SELECT * FROM backtest_runs WHERE id = 1', conn).iloc[0]
+    run_query = f'SELECT * FROM backtest_runs WHERE id = {run_id}'
+    run_df = pd.read_sql_query(run_query, conn)
+    if run_df.empty:
+        print(f"❌ Run ID {run_id} not found.")
+        return
+    run = run_df.iloc[0]
     
     # Strategy Performance
-    strategy_perf = pd.read_sql_query('''
+    strategy_perf = pd.read_sql_query(f'''
         SELECT strategy_name, 
                COUNT(*) as trades,
                SUM(CASE WHEN result_pips > 0 THEN 1 ELSE 0 END) as wins,
                SUM(result_pips) as net_r
         FROM backtest_signals 
-        WHERE run_id = 1 AND result != 'BLOCKED'
+        WHERE run_id = {run_id} AND result != 'BLOCKED'
         GROUP BY strategy_name
     ''', conn)
     strategy_perf['win_rate'] = (strategy_perf['wins'] / strategy_perf['trades'] * 100).round(1)
     
     # Symbol Performance
-    symbol_perf = pd.read_sql_query('''
+    symbol_perf = pd.read_sql_query(f'''
         SELECT symbol,
                COUNT(*) as trades,
                SUM(CASE WHEN result_pips > 0 THEN 1 ELSE 0 END) as wins,
                SUM(result_pips) as net_r
         FROM backtest_signals 
-        WHERE run_id = 1 AND result != 'BLOCKED'
+        WHERE run_id = {run_id} AND result != 'BLOCKED'
         GROUP BY symbol
         ORDER BY net_r DESC
     ''', conn)
     symbol_perf['win_rate'] = (symbol_perf['wins'] / symbol_perf['trades'] * 100).round(1)
 
     # Equity Curve Data
-    equity_df = pd.read_sql_query('''
+    equity_df = pd.read_sql_query(f'''
         SELECT timestamp, result_pips
         FROM backtest_signals 
-        WHERE run_id = 1 AND result != 'BLOCKED' AND result != 'OPEN'
+        WHERE run_id = {run_id} AND result != 'BLOCKED' AND result != 'OPEN'
         ORDER BY timestamp
     ''', conn)
     equity_df['cumulative_r'] = equity_df['result_pips'].cumsum()

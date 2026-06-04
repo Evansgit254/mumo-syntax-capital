@@ -47,6 +47,7 @@ METAAPI_TOKEN = _settings.metaapi_token
 METAAPI_ACCOUNT_ID = _settings.metaapi_account_id
 MT5_AUTO_TRADE = _settings.mt5_auto_trade
 MT5_PAPER_MODE = _settings.mt5_paper_mode  # Default: paper mode for safety
+MT5_USE_DIRECT = _settings.mt5_use_direct  # V5.3.3 Native Windows Library support
 MT5_SYMBOL_SUFFIX = _settings.mt5_symbol_suffix  # e.g., "c" for HFM Cent accounts (EURUSDc)
 LIVE_TRADING_APPROVED = _settings.live_trading_approved
 REQUIRE_BROKER_DATA_FOR_LIVE = _settings.require_broker_data_for_live
@@ -112,14 +113,14 @@ SYMBOL_ALPHA_WEIGHTS = {
     "USDJPY=X": {
         "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
         "TRENDING_BEAR":  {"velocity": 0.1, "zscore": 0.1, "momentum": 0.7, "volatility": 0.1},
-        "VOLATILE_RANGE": {"velocity": 0.2, "zscore": 0.4, "momentum": 0.3, "volatility": 0.1},
+        "VOLATILE_RANGE": {"velocity": 0.1, "zscore": 0.6, "momentum": 0.2, "volatility": 0.1},
         "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
     },
     "NZDUSD=X": {
         "TRENDING_BULL":  {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1},
         "TRENDING_BEAR":  {"velocity": 0.3, "zscore": 0.3, "momentum": 0.3, "volatility": 0.1},
-        "VOLATILE_RANGE": {"velocity": 0.3, "zscore": 0.4, "momentum": 0.2, "volatility": 0.1},
-        "LOW_VOL_RANGE":  {"velocity": 0.4, "zscore": 0.5, "momentum": 0.05, "volatility": 0.05},
+        "VOLATILE_RANGE": {"velocity": 0.4, "zscore": 0.2, "momentum": 0.3, "volatility": 0.1},
+        "LOW_VOL_RANGE":  {"velocity": 0.5, "zscore": 0.3, "momentum": 0.1, "volatility": 0.1},
     },
     "AUDUSD=X": {
         "TRENDING_BULL":  {"velocity": 0.1, "zscore": 0.7, "momentum": 0.1, "volatility": 0.1},

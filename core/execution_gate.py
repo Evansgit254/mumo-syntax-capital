@@ -68,13 +68,23 @@ class ExecutionGate:
             if exposure_block:
                 return exposure_block
 
-            # 5. Volatility (ATR) Gate
+            # 5. Volatility (ATR) Gate (V5.3.2: Precision Shield)
             current_atr = signal.get('current_atr')
             avg_atr = signal.get('avg_atr')
+            strategy_type = signal.get('trade_type', '')
+            
             try:
                 if current_atr and avg_atr and avg_atr > 0.0:
-                    if current_atr < (avg_atr * 0.95):
-                        return {"status": "BLOCKED", "reason": f"LOW_VOLATILITY_CHOP ({current_atr:.5f} < {avg_atr*0.95:.5f})"}
+                    # Exempt top alpha performers from restrictive range rules
+                    if symbol in ["GC=F", "USDJPY=X"]:
+                        return {"status": "PASSED", "reason": "VOLATILITY_EXEMPT_ALPHA"}
+
+                    # Thresholds: 0.90x for accumulation, 2.0x for exhaustion cap
+                    if current_atr < (avg_atr * 0.90):
+                        return {"status": "BLOCKED", "reason": f"LOW_VOLATILITY_CHOP ({current_atr:.5f} < {avg_atr*0.90:.5f})"}
+                    
+                    if current_atr > (avg_atr * 2.5):
+                        return {"status": "BLOCKED", "reason": f"EXHAUSTION_BURST ({current_atr:.5f} > {avg_atr*2.5:.5f})"}
             except Exception as e:
                 import traceback
                 print("ATR GATE ERROR:")

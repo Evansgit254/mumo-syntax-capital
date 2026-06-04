@@ -1,16 +1,17 @@
 # Authenticity Gap Assessment
 
-System version: `5.2.0-research`
+System version: `5.3.3-direct`
 
 Assessment date: 2026-05-29
 
-Engineering update: 2026-06-03
+Engineering update: 2026-06-05
 
 Baseline evidence:
 
-- Backtest baseline: `database/backtest_results.db`, Run ID `58`
+- Backtest baseline: `database/backtest_results.db`, Run ID `69` (30-day Gold Standard)
+- Verification baseline: `database/backtest_results.db`, Run ID `68` (Precision Shield)
 - Active execution ledger: `database/signals.db`
-- Current status: research/paper-trading system, not live-proven institutional trading system
+- Current status: research-active prototypes with paper-execution baseline
 
 ## Current Rating
 

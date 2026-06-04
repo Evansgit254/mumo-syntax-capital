@@ -1,4 +1,4 @@
-# 🏛️ Pure Quant Institutional Terminal (v5.3.0 - Live Ready Baseline)
+# 🏛️ Pure Quant Institutional Terminal (v5.3.3 - Direct Execution)
 
 > Deterministic alpha research, paper execution, and controlled deployment tooling.
 
@@ -34,22 +34,22 @@ Maintained pattern-extension engine for strict price-action setups.
 ### 3. Shared Structural Alpha Kernel
 *   **Velocity Alpha**: Normalized momentum measurement for volatility-adjusted trend strength.
 *   **Regime-Adaptive Filters**: Dynamic logic shifts between trending and mean-reverting states.
-*   **Active Strategy Scope**: CRT and Advanced Pattern only.
+*   **Volatility Shield**: Precision ATR-relative gating (V5.3.2) to prevent low-volatility chop.
 
 ---
 
 ## Performance Matrix (Database-Derived)
 
-Latest audited benchmark: `database/backtest_results.db`, Run ID `1` (30-day window), date range `2026-05-05` to `2026-06-04`.
+Latest audited benchmark: `database/backtest_results.db`, Run ID `69` (30-day window), date range `2026-05-06` to `2026-06-05`.
 
 | Metric | CRT Strategy (H1) | Advanced Patterns |
 | :--- | :--- | :--- |
-| **Closed Trades** | 1,651 | 8 |
-| **Win Rate** | 70.9% | 62.5% |
-| **Net Profit** | +670.9R | +4.4R |
+| **Closed Trades** | 1,693 | 31 |
+| **Win Rate** | 67.9% | 51.6% |
+| **Net Profit** | +564.0R | +6.1R |
 | **Status** | Core baseline | Active research extension |
 
-Run `1` is the current retained operational baseline. Active signal generation remains strictly limited to the CRT and Advanced Pattern engines.
+Run `69` is the current retained operational baseline. Active signal generation remains strictly limited to the CRT and Advanced Pattern engines.
 
 ---
 
@@ -71,7 +71,7 @@ Generate high-conviction signals with full reasoning forensics:
 python app/generate_signals.py
 ```
 
-### 3. Integrated Management (v5.1.1+)
+### 3. Integrated Management (v5.3.2+)
 Manage backups, updates, and rollbacks using the native maintenance script:
 ```bash
 ./manage.sh status     # Check versioning and DB health
@@ -92,6 +92,21 @@ Generate an interactive HTML dashboard from the SQLite backtest results:
 python generate_dashboard.py
 ```
 View the resulting `backtest_dashboard.html` for equity curves and symbol-level analysis.
+
+---
+
+## ⚡ Direct MT5 Mode (v5.3.3)
+For XM, HFM, and other MT5 brokers, the system now supports **Direct Execution** bypassing the MetaAPI bridge.
+
+### Setup (Windows)
+1. **Requirements**: `pip install MetaTrader5`
+2. **Broker**: Open your MT5 terminal (XM/HFM) and login locally.
+3. **Configuration**:
+   - `MT5_USE_DIRECT=true`
+   - `MT5_PAPER_MODE=false` (Set to `true` for paper testing)
+   - `MT5_SYMBOL_SUFFIX=` (Set if your broker uses cent suffixes like `.m`)
+
+This mode offers **sub-millisecond execution** and removes all cloud subscription fees.
 
 ---
 
@@ -126,4 +141,4 @@ Trading financial markets involves significant risk. Current performance metrics
 - Signal delivery reservation fails closed if the dedupe database is unavailable, so a storage fault will block delivery instead of duplicating it.
 - Test markers now separate `integration`, `live`, and `authentic` coverage so local runs can skip external dependencies cleanly.
 
-**System Version: 5.3.0 (Live-Ready Mathematical Update 63)**
+**System Version: 5.3.2 (Precision Shield Update 68)**

@@ -54,6 +54,7 @@ class AppConfig(BaseModel):
     metaapi_account_id: str = ""
     mt5_auto_trade: bool = False
     mt5_paper_mode: bool = True
+    mt5_use_direct: bool = False # Flag for native Windows MT5 library (v5.3.3)
     mt5_symbol_suffix: str = ""
     live_trading_approved: bool = False
     require_broker_data_for_live: bool = True
