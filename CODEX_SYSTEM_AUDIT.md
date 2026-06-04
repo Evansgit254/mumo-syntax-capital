@@ -23,14 +23,14 @@ Strategy-level result for Run `58`:
 | CRT H1 | 8,115 | 61.77% | +1,029.52 | +0.127 | 1.33 | Research-active |
 | Advanced Patterns | 19 | 73.68% | +15.90 | +0.837 | 4.18 | Promising but under-sampled |
 
-**[Addendum: 2026-05-29] System Overhaul (Version 5.3.0)**
-Following a forensic investigation into Run 58's false-positive trade densities and the subsequent "zero trade" blocking bugs, the ExecutionGate was refactored with strict `run_id` isolation. Run 63 (Deep History: `2026-04-07` to `2026-05-29`) stands as the mathematically clean institutional baseline replacing Run 58.
+**[Addendum: 2026-06-04] System Overhaul (Version 5.3.0) & 30-Day Dashboarding**
+Following a forensic investigation into earlier false-positive trade densities and the subsequent "zero trade" blocking bugs, the ExecutionGate was refactored with strict `run_id` isolation. Run 1 (30-day window: `2026-05-05` to `2026-06-04`) stands as the mathematically clean institutional baseline.
 
-**Run 63 Final Strategy Breakdown:**
+**Run 1 Final Strategy Breakdown:**
 | Strategy | Trades | Win Rate | Net R | Status |
 | :--- | ---: | ---: | ---: | :--- |
-| CRT H1 | 2,720 | 71.1% | +1,034.1R | Core baseline |
-| Advanced Patterns | 10 | 50.0% | +2.3R | Active research extension |
+| CRT H1 | 1,651 | 70.9% | +670.9R | Core baseline |
+| Advanced Patterns | 8 | 62.5% | +4.4R | Active research extension |
 
 Engineering actions applied from this audit:
 

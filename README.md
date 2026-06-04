@@ -40,16 +40,16 @@ Maintained pattern-extension engine for strict price-action setups.
 
 ## Performance Matrix (Database-Derived)
 
-Latest audited benchmark: `database/backtest_results.db`, Run ID `58`, date range `2026-05-01` to `2026-05-29`.
+Latest audited benchmark: `database/backtest_results.db`, Run ID `1` (30-day window), date range `2026-05-05` to `2026-06-04`.
 
 | Metric | CRT Strategy (H1) | Advanced Patterns |
 | :--- | :--- | :--- |
-| **Closed Trades** | 2,720 | 10 |
-| **Win Rate** | 71.1% | 50.0% |
-| **Net Profit** | +1,034.1R | +2.3R |
+| **Closed Trades** | 1,651 | 8 |
+| **Win Rate** | 70.9% | 62.5% |
+| **Net Profit** | +670.9R | +4.4R |
 | **Status** | Core baseline | Active research extension |
 
-Run `63` is retained as historical evidence. Going forward, active signal generation is limited to CRT and Advanced Pattern.
+Run `1` is the current retained operational baseline. Active signal generation remains strictly limited to the CRT and Advanced Pattern engines.
 
 ---
 
@@ -85,6 +85,13 @@ Run the backtest engine with spread and slippage modeling (1.0 pip handicap):
 ```bash
 python run_backtest_cli.py --days 30
 ```
+
+### 5. Visual Dashboard
+Generate an interactive HTML dashboard from the SQLite backtest results:
+```bash
+python generate_dashboard.py
+```
+View the resulting `backtest_dashboard.html` for equity curves and symbol-level analysis.
 
 ---
 

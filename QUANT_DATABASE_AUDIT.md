@@ -14,24 +14,24 @@ Primary evidence sources:
 
 ## Backtest Baseline
 
-Latest benchmark run: Run ID `63` (Deep History)
+Latest benchmark run: Run ID `1` (30-Day Window)
 
-Date range: `2026-04-07` to `2026-05-29`
+Date range: `2026-05-05` to `2026-06-04`
 
 Closed-trade totals:
 
 | Metric | Value |
 | :--- | ---: |
-| Closed trades | 2,772 |
+| Closed trades | 1,659 |
 | Win rate | 70.9% |
-| Net result | +1,061.4R |
+| Net result | +675.3R |
 
 Strategy breakdown:
 
 | Strategy | Closed Trades | Win Rate | Net R | Status |
 | :--- | ---: | ---: | ---: | :--- |
-| CRT H1 | 2,720 | 71.1% | +1,034.1R | Core baseline |
-| Advanced Patterns | 10 | 50.0% | +2.3R | Active research extension |
+| CRT H1 | 1,651 | 70.9% | +670.9R | Core baseline |
+| Advanced Patterns | 8 | 62.5% | +4.4R | Active research extension |
 
 ## Engineering Interpretation
 
