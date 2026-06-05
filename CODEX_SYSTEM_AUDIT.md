@@ -1,8 +1,8 @@
 # CODEX SYSTEM AUDIT: Pure Quant Research Terminal
 
-Date: 2026-05-26  
-Current version: `5.2.0-research`  
-Scope: FastAPI backend, Stitch/vanilla dashboard, SQLite persistence, MetaAPI execution bridge, execution gate, data fidelity, and governance.
+Date: 2026-06-05
+Current version: `5.4.3-native`  
+Scope: FastAPI backend, Stitch/vanilla dashboard, SQLite persistence, Native MT5 execution engine, execution gate, data fidelity, and governance.
 
 ## 2026-05-29 Quant Database Update
 
@@ -48,7 +48,7 @@ Execution evidence boundary:
 
 This is the active project audit for `/home/evans/Projects/smc-scalp-signals`.
 
-The current codebase is advanced and it already includes encrypted MetaAPI credential persistence, role-aware admin users, a MetaAPI-backed `TradeExecutor`, an `ExecutionGate`, persistent trade reservations, strategy toggles, and execution state fields on `signals`.
+The current codebase is advanced and it already includes encrypted Native MT5 credential persistence, role-aware admin users, a Native-backed `TradeExecutor`, an `ExecutionGate`, persistent trade reservations, strategy toggles, and execution state fields on `signals`.
 
 The remaining institutional-readiness work is now narrower:
 
@@ -68,7 +68,7 @@ Implemented in this pass:
 - Added typed config validation for risk, status, strategy toggles, data provider, and MT5 execution settings.
 - Blocked arbitrary unknown config writes through `/api/config`.
 - Added structured `audit_events` alongside the existing `config_audit`.
-- Added audit events for config updates, data-provider changes, MetaAPI credential updates, and regime-driven threshold updates.
+- Added audit events for config updates, data-provider changes, Native MT5 credential updates, and regime-driven threshold updates.
 - Updated regime detection to version and audit `min_quality_score`.
 - Fixed dynamic config propagation for `risk_per_trade`, `min_quality_score`, `min_quality_score_intraday`, `max_concurrent_trades`, `mt5_auto_trade`, and `mt5_paper_mode`.
 - Updated risk sizing and major strategies to read dynamic config values at decision time instead of relying on stale imported constants.
@@ -153,22 +153,21 @@ Remaining:
 - Configurable strategy and session exposure budgets now supplement no-pyramiding.
 - Add per-symbol burst budgets if the system later needs multiple valid liquidity events on the same symbol.
 
-### 4. MetaAPI Execution Reliability
+### 4. Native MT5 Execution Reliability
 
-**Status:** Partially remediated.
+**Status:** Remediated (V5.4.3).
 
 Existing strengths:
 
-- `TradeExecutor` supports MetaAPI lazy connection.
+- `TradeExecutor` uses `DirectMT5Engine` for native terminal execution.
 - Paper mode is default.
 - Live/paper execution status is persisted on `signals`.
 - Partial fill is detected when returned volume is below requested lot size.
 
 Risk:
 
-- MetaAPI connection lifecycle still depends on lazy connect at trade time.
-- Broker response shape can vary.
-- Execution state was mostly mutable on the signal row.
+- MetaAPI cloud dependencies have been completely purged.
+- Execution state is tracked via `execution_events`.
 
 Remediation:
 
@@ -206,7 +205,7 @@ Update: live execution now performs a pre-trade broker spread check and refuses 
 Risk:
 
 - Regime and macro bias are based on yfinance REST candles.
-- Execution happens on broker symbols through MetaAPI.
+- Execution happens on broker symbols through local Native MT5 terminal.
 - yfinance can be delayed, adjusted, incomplete, or structurally different from broker candles.
 
 Required:
@@ -222,9 +221,9 @@ Required:
 
 Existing strengths:
 
-- `core/secure_config.py` protects `metaapi_token` and `metaapi_account_id`.
+- `core/secure_config.py` protects `mt5_login`, `mt5_password`, and `mt5_server`.
 - API config responses redact secret values.
-- MetaAPI config endpoint refuses storage if encryption is unavailable.
+- Native MT5 config endpoint refuses storage if encryption is unavailable.
 
 Remaining:
 
@@ -260,7 +259,7 @@ Remaining:
 Existing strengths:
 
 - Users carry a role.
-- `require_role()` protects config and MetaAPI credential endpoints.
+- `require_role()` protects config and Native MT5 credential endpoints.
 
 Remaining:
 
@@ -276,7 +275,7 @@ Scaling from 1 to 50 symbols still stresses:
 - thread executor saturation.
 - SQLite write locks.
 - signal cycle latency.
-- Telegram and MetaAPI rate limits.
+- Telegram rate limits.
 
 Recommended next steps:
 

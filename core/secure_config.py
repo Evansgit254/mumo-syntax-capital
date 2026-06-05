@@ -6,7 +6,7 @@ from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 
 
-SECRET_KEYS = {"metaapi_token", "metaapi_account_id"}
+SECRET_KEYS = {"mt5_login", "mt5_password", "mt5_server"}
 REDACTED = "********"
 
 

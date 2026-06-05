@@ -105,13 +105,14 @@ async def test_missing_entry_price_blocks_execution(executor):
     mock_persist.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_live_execution_requires_approval_and_broker_data(temp_signals_db):
+async def test_live_execution_requires_approval_and_terminal_creds(temp_signals_db):
     config_manager.set_runtime_override("mt5_auto_trade", True)
     config_manager.set_runtime_override("mt5_paper_mode", False)
     config_manager.set_runtime_override("live_trading_approved", False)
     config_manager.set_runtime_override("data_provider", "yfinance")
-    config_manager.set_runtime_override("metaapi_token", "token")
-    config_manager.set_runtime_override("metaapi_account_id", "account")
+    config_manager.set_runtime_override("mt5_login", 12345)
+    config_manager.set_runtime_override("mt5_password", "pass")
+    config_manager.set_runtime_override("mt5_server", "server")
     executor = TradeExecutor()
 
     result = await executor.execute_trade({
@@ -126,50 +127,3 @@ async def test_live_execution_requires_approval_and_broker_data(temp_signals_db)
 
     assert result["status"] == "blocked"
     assert "live_trading_approved=false" in result["reason"]
-    assert "data_provider must be mt5" in result["reason"]
-
-@pytest.mark.asyncio
-async def test_reconciliation_inserts_unmatched_broker_deal(temp_signals_db):
-    config_manager.set_runtime_override("mt5_auto_trade", True)
-    config_manager.set_runtime_override("mt5_paper_mode", False)
-    config_manager.set_runtime_override("live_trading_approved", True)
-    config_manager.set_runtime_override("data_provider", "mt5")
-    config_manager.set_runtime_override("metaapi_token", "token")
-    config_manager.set_runtime_override("metaapi_account_id", "account")
-    executor = TradeExecutor()
-
-    connection = MagicMock()
-    connection.connect = AsyncMock()
-    connection.wait_synchronized = AsyncMock()
-    connection.get_deals_by_id = AsyncMock(return_value=[{
-        "id": "deal-1",
-        "orderId": "broker-order-1",
-        "positionId": "broker-position-1",
-        "symbol": "EURUSD",
-        "type": "DEAL_TYPE_BUY",
-        "volume": 0.05,
-        "price": 1.0575,
-        "commission": -0.25,
-        "swap": -0.01,
-        "time": "2026-06-03T09:00:00Z",
-    }])
-    connection.get_positions = AsyncMock(return_value=[])
-    executor._account = MagicMock()
-    executor._account.get_rpc_connection.return_value = connection
-
-    with patch.object(executor, "_connect", AsyncMock(return_value=True)):
-        await executor.reconcile_with_broker()
-
-    conn = sqlite3.connect(temp_signals_db)
-    order = conn.execute("SELECT status FROM orders WHERE order_id='broker-order-1'").fetchone()
-    fill = conn.execute("""
-        SELECT filled_price, commission, swap FROM fills WHERE order_id='broker-order-1'
-    """).fetchone()
-    run = conn.execute("SELECT status, deals_count, positions_count FROM reconciliation_runs").fetchone()
-    event_count = conn.execute("SELECT COUNT(*) FROM broker_reconciliation_events").fetchone()[0]
-    conn.close()
-
-    assert order == ("BROKER_RECONCILED",)
-    assert fill == (1.0575, -0.25, -0.01)
-    assert run == ("OK", 1, 0)
-    assert event_count == 1

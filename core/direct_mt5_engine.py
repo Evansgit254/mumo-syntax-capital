@@ -64,10 +64,13 @@ class DirectMT5Engine:
             return {"status": "FAILED", "reason": "CONNECTION_ERROR"}
 
         symbol = signal.get('symbol')
-        # Handle XM/HFM suffixes (e.g. EURUSD# or EURUSD.m)
+        # Map original symbol to broker symbol if not already mapped
+        # In this context, we assume the executor hasn't mapped it yet or we just use symbol mapping logic here.
+        # Actually, let's just make it robust.
+        from core.trade_executor import SYMBOL_MAP
+        base_sym = SYMBOL_MAP.get(symbol, symbol.replace("=X", "").replace("-", ""))
         from config.config import MT5_SYMBOL_SUFFIX
-        if MT5_SYMBOL_SUFFIX and MT5_SYMBOL_SUFFIX not in symbol:
-            symbol = symbol.replace("=X", "").replace("-USD", "") + MT5_SYMBOL_SUFFIX
+        symbol = f"{base_sym}{MT5_SYMBOL_SUFFIX}"
 
         direction = signal.get('direction', '').upper()
         volume = float(signal.get('volume', 0.01))
@@ -111,6 +114,50 @@ class DirectMT5Engine:
             "order_id": result.order,
             "price": result.price,
             "timestamp": datetime.now().isoformat()
+        }
+
+    def get_candles(self, symbol: str, timeframe: str, count: int = 500) -> Optional[List[Dict]]:
+        """
+        Fetches historical candles directly from the MT5 terminal.
+        Expects symbol to be already mapped (e.g. including broker suffix).
+        """
+        if not self.initialized and not self.connect():
+            return None
+
+        # Map string timeframes to MT5 constants
+        mt5_tf = {
+            "1m": mt5.TIMEFRAME_M1, "5m": mt5.TIMEFRAME_M5, "15m": mt5.TIMEFRAME_M15,
+            "1h": mt5.TIMEFRAME_H1, "4h": mt5.TIMEFRAME_H4, "1d": mt5.TIMEFRAME_D1
+        }.get(timeframe, mt5.TIMEFRAME_H1)
+
+        rates = mt5.copy_rates_from_pos(symbol, mt5_tf, 0, count)
+        if rates is None or len(rates) == 0:
+            self.logger.warning(f"Failed to fetch {timeframe} candles for {symbol}")
+            return None
+
+        return [{
+            "time": datetime.fromtimestamp(r['time']).isoformat(),
+            "open": float(r['open']),
+            "high": float(r['high']),
+            "low": float(r['low']),
+            "close": float(r['close']),
+            "tick_volume": int(r['tick_volume'])
+        } for r in rates]
+
+    def get_account_summary(self) -> Dict:
+        """Fetches live account metrics directly from the terminal."""
+        if not self.initialized and not self.connect():
+            return {"balance": 0.0, "equity": 0.0}
+            
+        info = mt5.account_info()
+        if info is None:
+            return {"balance": 0.0, "equity": 0.0}
+            
+        return {
+            "balance": float(info.balance),
+            "equity": float(info.equity),
+            "currency": info.currency,
+            "broker": info.company
         }
 
     def close_connection(self):

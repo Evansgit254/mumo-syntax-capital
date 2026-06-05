@@ -41,13 +41,9 @@ MT5_LOGIN = _settings.mt5_login
 MT5_PASSWORD = _settings.mt5_password
 MT5_SERVER = _settings.mt5_server
 
-# MT5 AUTO-TRADING via MetaAPI (Linux-compatible REST bridge)
-# Sign up free at https://metaapi.cloud to get these values
-METAAPI_TOKEN = _settings.metaapi_token
-METAAPI_ACCOUNT_ID = _settings.metaapi_account_id
+# MT5 AUTO-TRADING SETTINGS
 MT5_AUTO_TRADE = _settings.mt5_auto_trade
 MT5_PAPER_MODE = _settings.mt5_paper_mode  # Default: paper mode for safety
-MT5_USE_DIRECT = _settings.mt5_use_direct  # V5.3.3 Native Windows Library support
 MT5_SYMBOL_SUFFIX = _settings.mt5_symbol_suffix  # e.g., "c" for HFM Cent accounts (EURUSDc)
 LIVE_TRADING_APPROVED = _settings.live_trading_approved
 REQUIRE_BROKER_DATA_FOR_LIVE = _settings.require_broker_data_for_live

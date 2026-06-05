@@ -1,6 +1,6 @@
 # Authenticity Gap Assessment
 
-System version: `5.3.3-direct`
+System version: `5.4.3-native`
 
 Assessment date: 2026-05-29
 
@@ -27,7 +27,7 @@ Baseline evidence:
 
 ### 1. Live Execution Proof
 
-The system has a MetaAPI bridge and order/fill tables, but the active ledger only shows `PAPER_EXECUTED` fills. There is no broker-side proof of real fills, slippage, commissions, swap, rejections, partial fills, or reconciliation.
+The system has a Direct MT5 execution engine and order/fill tables, but the active ledger only shows `PAPER_EXECUTED` fills. There is no broker-side proof of real fills, slippage, commissions, swap, rejections, partial fills, or reconciliation.
 
 ### 2. Backtest Validity
 
@@ -47,7 +47,7 @@ Current controls now include configurable correlated exposure, strategy exposure
 
 ### 6. Execution Governance
 
-Live execution now fails closed unless `live_trading_approved=true`, MetaAPI credentials exist, and broker data mode is active when `require_broker_data_for_live=true`. A full maker-checker workflow is still not implemented; approval is currently a governed config key, not a two-person release process.
+Live execution now fails closed unless `live_trading_approved=true`, Native MT5 Terminal credentials exist, and broker data mode is active when `require_broker_data_for_live=true`. A full maker-checker workflow is still not implemented; approval is currently a governed config key, not a two-person release process.
 
 ### 7. Ledger Quality
 

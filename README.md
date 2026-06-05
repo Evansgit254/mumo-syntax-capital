@@ -1,4 +1,4 @@
-# 🏛️ Pure Quant Institutional Terminal (v5.3.3 - Direct Execution)
+# 🏛️ Pure Quant Institutional Terminal (v5.4.3 - Native MT5 Only)
 
 > Deterministic alpha research, paper execution, and controlled deployment tooling.
 
@@ -11,7 +11,7 @@
 
 ## 📖 Overview
 
-The **Pure Quant Research Terminal** is a deterministic trading-signal research system with paper-execution infrastructure and a MetaAPI execution bridge. Current database evidence supports research and paper validation; live broker performance is not yet proven by the active ledger.
+The **Pure Quant Research Terminal** is a deterministic trading-signal research system with paper-execution infrastructure and a Native MT5 execution engine. Current database evidence supports research and paper validation; live broker performance is not yet proven by the active ledger.
 
 The system is optimized for **H1/H4 Macro Trends** and **M5/M15 Institutional Execution Windows**, focusing on surgical entries within high-probability liquidity zones.
 
@@ -95,18 +95,20 @@ View the resulting `backtest_dashboard.html` for equity curves and symbol-level 
 
 ---
 
-## ⚡ Direct MT5 Mode (v5.3.3)
-For XM, HFM, and other MT5 brokers, the system now supports **Direct Execution** bypassing the MetaAPI bridge.
+## ⚡ Native MT5 Terminal (v5.4.3)
+The system now operates exclusively via **Direct Native Execution**, completely bypassing cloud bridges like MetaAPI.
 
 ### Setup (Windows)
 1. **Requirements**: `pip install MetaTrader5`
 2. **Broker**: Open your MT5 terminal (XM/HFM) and login locally.
 3. **Configuration**:
-   - `MT5_USE_DIRECT=true`
+   - `MT5_LOGIN`
+   - `MT5_PASSWORD`
+   - `MT5_SERVER`
    - `MT5_PAPER_MODE=false` (Set to `true` for paper testing)
    - `MT5_SYMBOL_SUFFIX=` (Set if your broker uses cent suffixes like `.m`)
 
-This mode offers **sub-millisecond execution** and removes all cloud subscription fees.
+This mode offers **institutional-grade execution speed** and eliminates all cloud subscription fees and rate-limiting issues.
 
 ---
 
@@ -141,4 +143,4 @@ Trading financial markets involves significant risk. Current performance metrics
 - Signal delivery reservation fails closed if the dedupe database is unavailable, so a storage fault will block delivery instead of duplicating it.
 - Test markers now separate `integration`, `live`, and `authentic` coverage so local runs can skip external dependencies cleanly.
 
-**System Version: 5.3.2 (Precision Shield Update 68)**
+**System Version: 5.4.3 (Pure Sovereignty Update)**

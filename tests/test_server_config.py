@@ -49,8 +49,9 @@ class TestServerConfig(unittest.TestCase):
         self.patcher2.start()
         config_manager.set_runtime_override("db_clients", self.db_path)
         config_manager.set_runtime_override("mt5_paper_mode", True)
-        config_manager.set_runtime_override("metaapi_token", "")
-        config_manager.set_runtime_override("metaapi_account_id", "")
+        config_manager.set_runtime_override("mt5_login", 0)
+        config_manager.set_runtime_override("mt5_password", "")
+        config_manager.set_runtime_override("mt5_server", "")
         app.state.disable_reconciliation_loop = True
         
         self.client = TestClient(app)

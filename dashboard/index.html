@@ -454,12 +454,16 @@
                         <h3 class="label-caps" style="color: var(--acc-cyan); margin-bottom: 20px;">Terminal Configuration</h3>
                         <div style="display: flex; flex-direction: column; gap: 16px;">
                             <div>
-                                <label class="label-caps" style="font-size: 8px; color: var(--text-secondary); display: block; margin-bottom: 6px;">MetaAPI Token</label>
-                                <input type="password" id="meta-token" placeholder="Enter MetaAPI Token..." style="width: 100%; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: var(--radius); font-family: monospace; font-size: 11px;">
+                                <label class="label-caps" style="font-size: 8px; color: var(--text-secondary); display: block; margin-bottom: 6px;">MT5 Account Login (Number)</label>
+                                <input type="number" id="meta-login" placeholder="e.g. 1234567" style="width: 100%; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: var(--radius); font-family: monospace; font-size: 11px;">
                             </div>
                             <div>
-                                <label class="label-caps" style="font-size: 8px; color: var(--text-secondary); display: block; margin-bottom: 6px;">MT5 Account ID</label>
-                                <input type="text" id="meta-account-id" placeholder="Account UUID..." style="width: 100%; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: var(--radius); font-family: monospace; font-size: 11px;">
+                                <label class="label-caps" style="font-size: 8px; color: var(--text-secondary); display: block; margin-bottom: 6px;">MT5 Password</label>
+                                <input type="password" id="meta-password" placeholder="Terminal Password..." style="width: 100%; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: var(--radius); font-family: monospace; font-size: 11px;">
+                            </div>
+                            <div>
+                                <label class="label-caps" style="font-size: 8px; color: var(--text-secondary); display: block; margin-bottom: 6px;">MT5 Server</label>
+                                <input type="text" id="meta-server" placeholder="e.g. XM-Global-MT5" style="width: 100%; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: var(--radius); font-family: monospace; font-size: 11px;">
                             </div>
                             <div>
                                 <label class="label-caps" style="font-size: 8px; color: var(--text-secondary); display: block; margin-bottom: 6px;">MT5 Symbol Suffix</label>
@@ -473,7 +477,7 @@
                                 </div>
                                 <button class="btn btn-primary" onclick="saveTerminalConfig()" style="font-size: 9px; padding: 6px 12px;">SAVE_TERMINAL_CONFIG</button>
                             </div>
-                            <p class="text-xs text-tertiary" style="margin-top: 10px; font-size: 9px;">NOTE: Linux trading requires a <a href="https://metaapi.cloud" target="_blank" style="color: var(--acc-cyan);">MetaAPI.cloud</a> REST bridge.</p>
+                            <p class="text-xs text-tertiary" style="margin-top: 10px; font-size: 9px;">NOTE: Native execution requires the MT5 terminal running on the host system.</p>
                         </div>
                     </div>
                 </div>
@@ -809,20 +813,13 @@
                 const data = await res.json();
                 const badge = document.getElementById('mt5-mode-badge');
                 if (badge) {
-                    let statusText = data.status;
-                    if (!data.credentials_set && data.mode === 'MT5_BRIDGE') {
-                        statusText = 'MISSING_CREDENTIALS';
-                        badge.style.color = 'var(--acc-crimson)';
-                    } else {
-                        badge.style.color = data.status === 'CONNECTED' ? 'var(--acc-emerald)' : 'var(--acc-amber)';
-                    }
-                    badge.innerText = `${data.mode}: ${statusText}`;
+                    badge.style.color = data.status === 'READY' ? 'var(--acc-emerald)' : 'var(--acc-amber)';
+                    badge.innerText = `${data.mode}: ${data.status} (${data.account})`;
                 }
                 const feedBadge = document.getElementById('feed-status-badge');
                 if (feedBadge) {
-                    const mode = data.mode || 'UNKNOWN';
-                    const truthfulStatus = data.status === 'CONNECTED' ? 'LIVE_BROKER' : (mode === 'MT5_BRIDGE' ? 'BRIDGE_CONFIG' : 'RESEARCH_FEED');
-                    const color = data.status === 'CONNECTED' ? 'var(--acc-emerald)' : 'var(--acc-amber)';
+                    const truthfulStatus = data.status === 'READY' ? 'TERMINAL_CONNECTED' : 'OFFLINE';
+                    const color = data.status === 'READY' ? 'var(--acc-emerald)' : 'var(--acc-crimson)';
                     feedBadge.innerText = truthfulStatus;
                     feedBadge.style.borderColor = color;
                     feedBadge.style.color = color;
@@ -832,7 +829,7 @@
                 const yfBtn = document.getElementById('provider-yfinance');
                 const mtBtn = document.getElementById('provider-mt5');
                 if (yfBtn && mtBtn) {
-                    const isYF = data.mode === 'YFINANCE';
+                    const isYF = data.mode !== 'NATIVE_MT5';
                     yfBtn.style.background = isYF ? 'var(--acc-cyan)' : 'var(--bg-surface)';
                     yfBtn.style.color = isYF ? '#000' : 'var(--text-primary)';
                     mtBtn.style.background = !isYF ? 'var(--acc-cyan)' : 'var(--bg-surface)';
@@ -847,13 +844,14 @@
         }
 
         async function saveTerminalConfig() {
-            const token = document.getElementById('meta-token').value;
-            const accountId = document.getElementById('meta-account-id').value;
+            const login = document.getElementById('meta-login').value;
+            const pass = document.getElementById('meta-password').value;
+            const server = document.getElementById('meta-server').value;
             const paperMode = document.getElementById('meta-paper-mode').checked;
             const suffix = document.getElementById('meta-symbol-suffix').value.trim();
             
-            if (!token || !accountId) {
-                showToast("TOKEN_AND_ACCOUNT_ID_REQUIRED", true);
+            if (!login || !pass || !server) {
+                showToast("LOGIN_PASS_SERVER_REQUIRED", true);
                 return;
             }
 
@@ -861,7 +859,7 @@
                 const res = await apiFetch('/api/mt5/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token, accountId, paperMode })
+                    body: JSON.stringify({ login: parseInt(login), password: pass, server: server, paperMode })
                 });
                 if (!res.ok) {
                     let detail = "SAVE_FAILED";
@@ -923,6 +921,10 @@
                 setChecked('cfg-require-broker-data', cfg.require_broker_data_for_live !== false);
                 setChecked('cfg-mt5-auto-trade', cfg.mt5_auto_trade);
                 setChecked('meta-paper-mode', cfg.mt5_paper_mode !== false);
+                setValue('meta-login', cfg.mt5_login);
+                setValue('meta-password', cfg.mt5_password);
+                setValue('meta-server', cfg.mt5_server);
+                setValue('meta-symbol-suffix', cfg.mt5_symbol_suffix || '');
             } catch (e) {
                 console.error("Failed to load editable config", e);
             }

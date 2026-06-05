@@ -61,27 +61,10 @@ app.add_middleware(
 
 # DATABASE PATHS MOVED TO config/config.py
 
-async def reconciliation_loop():
-    """Background task to sync the local terminal ledger with the broker truth."""
-    from core.trade_executor import get_executor
-    executor = get_executor()
-    print("🛰️  Institutional Reconciliation Engine: Active")
-    while True:
-        try:
-            await executor.reconcile_with_broker()
-        except Exception as e:
-            print(f"⚠️  Background Reconciliation Error: {e}")
-        await asyncio.sleep(300) # 5-minute audit cycle
-
 @app.on_event("startup")
 async def startup_event():
-    if getattr(app.state, "disable_reconciliation_loop", False):
-        return
-    if os.getenv("DISABLE_RECONCILIATION_LOOP", "").lower() == "true":
-        return
-    if "PYTEST_CURRENT_TEST" in os.environ:
-        return
-    asyncio.create_task(reconciliation_loop())
+    # Native Engine: Reconciliation loop disabled until Native Sync is ready
+    pass
 
 def ensure_db_schema():
     """V18.1: Automatic Schema Migration - Ensures all required columns exist.
@@ -450,9 +433,10 @@ class ConfigUpdate(BaseModel):
     key: str
     value: str
 
-class MetaAPIConfig(BaseModel):
-    token: str
-    accountId: str
+class MT5Config(BaseModel):
+    login: int
+    password: str
+    server: str
     paperMode: bool
 
 CONFIG_SCHEMA = {
@@ -473,6 +457,9 @@ CONFIG_SCHEMA = {
     "max_session_exposure": {"type": "int", "min": 0, "max": 50},
     "data_provider": {"type": "str", "allowed": {"yfinance", "mt5"}},
     "mt5_symbol_suffix": {"type": "str"},
+    "mt5_login": {"type": "int", "min": 0},
+    "mt5_password": {"type": "str"},
+    "mt5_server": {"type": "str"},
 }
 
 LIVE_TRADING_CONFIG_KEYS = {"mt5_auto_trade", "mt5_paper_mode", "live_trading_approved"}
@@ -539,10 +526,8 @@ def _live_enablement_errors(proposed: dict[str, str]) -> list[str]:
         return errors
     if not approved:
         errors.append("live_trading_approved must be true")
-    if settings.require_broker_data_for_live and data_provider != "mt5":
-        errors.append("data_provider must be mt5")
-    if not settings.metaapi_token or not settings.metaapi_account_id:
-        errors.append("MetaAPI credentials must be configured")
+    if not settings.mt5_login or not settings.mt5_password:
+        errors.append("MT5 Terminal credentials must be configured")
     return errors
 
 from fastapi.responses import FileResponse
@@ -685,31 +670,16 @@ async def set_data_provider(update: ConfigUpdate, current_user: User = Depends(g
         if conn: conn.close()
 
 @app.post("/api/mt5/config")
-async def update_mt5_config(config: MetaAPIConfig, current_user: User = Depends(get_current_user)):
-    """Update MetaAPI credentials in DB"""
+async def update_mt5_config(config: MT5Config, current_user: User = Depends(get_current_user)):
+    """Update Native MT5 credentials in DB"""
     require_role(current_user, "risk_manager")
-    settings = config_manager.refresh()
-    if not config.paperMode:
-        errors = []
-        if not settings.live_trading_approved:
-            errors.append("live_trading_approved must be true")
-        if settings.require_broker_data_for_live and settings.data_provider != "mt5":
-            errors.append("data_provider must be mt5")
-        if not config.token or not config.accountId:
-            errors.append("MetaAPI credentials must be configured")
-        if errors:
-            raise HTTPException(status_code=400, detail="Live enablement blocked: " + "; ".join(errors))
-    if not encryption_available():
-        raise HTTPException(
-            status_code=503,
-            detail="CONFIG_ENCRYPTION_KEY or JWT_SECRET must be set before storing MetaAPI credentials"
-        )
     conn = None
     try:
         conn = get_db_connection(DB_CLIENTS)
         updates = [
-            ("metaapi_token", protect_config_value("metaapi_token", config.token), "str"),
-            ("metaapi_account_id", protect_config_value("metaapi_account_id", config.accountId), "str"),
+            ("mt5_login", str(config.login), "int"),
+            ("mt5_password", protect_config_value("mt5_password", config.password), "str"),
+            ("mt5_server", config.server, "str"),
             ("mt5_paper_mode", "true" if config.paperMode else "false", "bool")
         ]
         for key, value, cfg_type in updates:
@@ -724,19 +694,9 @@ async def update_mt5_config(config: MetaAPIConfig, current_user: User = Depends(
                     updated_by = excluded.updated_by,
                     version = COALESCE(system_config.version, 0) + 1
             """, (key, value, cfg_type, datetime.utcnow().isoformat(), current_user.username))
-            conn.execute("""
-                INSERT INTO config_audit (key, old_value, new_value, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                key,
-                redact_config_value(key, old["value"] if old else None),
-                redact_config_value(key, value),
-                current_user.username,
-                datetime.utcnow().isoformat()
-            ))
             write_audit_event(
                 conn,
-                event_type="credential.update" if key.startswith("metaapi_") else "config.update",
+                event_type="credential.update",
                 actor=current_user.username,
                 target=key,
                 before_value=redact_config_value(key, old["value"] if old else None),
@@ -798,35 +758,25 @@ async def toggle_strategy(strategy_id: str, current_user: User = Depends(get_cur
 
 @app.get("/api/mt5/status")
 async def get_mt5_status(current_user: User = Depends(get_current_user)):
-    """Returns MT5 connection heartbeat status from persistent DB config"""
+    """Returns Native MT5 connection status"""
     try:
         settings = config_manager.refresh()
-        env_mode = os.environ.get("DATA_MODE")
-        if env_mode:
-            raw_mode = env_mode.upper()
-            mode = "MT5_BRIDGE" if raw_mode in {"MT5", "MT5_BRIDGE"} else "YFINANCE"
-        else:
-            mode = settings.data_provider.upper()
-        if mode == "MT5":
-            mode = "MT5_BRIDGE"
-        
         status = "DISCONNECTED"
-        account = "YFINANCE_REST"
-        if mode == "MT5_BRIDGE":
-            has_token = bool(settings.metaapi_token)
-            has_account = bool(settings.metaapi_account_id)
-            status = "CONNECTED" if has_token and has_account else "ERROR"
-            account = "METAAPI_CONFIGURED" if has_token and has_account else "METAAPI_MISSING_CREDS"
+        account = "NATIVE_MT5"
+        
+        # Simple check: do we have login/pass?
+        has_creds = bool(settings.mt5_login) and bool(settings.mt5_password)
+        status = "READY" if has_creds else "MISSING_CREDS"
 
         return {
             "status": status,
-            "mode": mode,
-            "account": account,
-            "credentials_set": bool(settings.metaapi_token),
+            "mode": "NATIVE_MT5",
+            "account": f"Account: {settings.mt5_login}" if settings.mt5_login else "Not Configured",
+            "credentials_set": has_creds,
             "symbol_suffix": settings.mt5_symbol_suffix
         }
     except Exception as e:
-        return {"status": "ERROR", "mode": "UNKNOWN", "detail": str(e)}
+        return {"status": "ERROR", "mode": "NATIVE_MT5", "detail": str(e)}
 
 # ── MT5 Position Management API ───────────────────────────────────────────────
 @app.get("/api/mt5/positions")
