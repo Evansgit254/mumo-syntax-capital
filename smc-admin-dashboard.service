@@ -4,7 +4,6 @@ After=network.target
 
 [Service]
 Type=simple
-User=evans
 WorkingDirectory=/home/evans/smc-scalp-signals
 Environment="PYTHONPATH=/home/evans/smc-scalp-signals"
 ExecStart=/home/evans/smc-scalp-signals/venv/bin/python /home/evans/smc-scalp-signals/admin_server.py
