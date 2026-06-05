@@ -69,13 +69,11 @@ async def test_paper_trade_execution(executor):
     
     config_manager.set_runtime_override("mt5_symbol_suffix", "c")
     with patch("core.trade_executor._executor", executor):
-        with patch.object(executor, "_log_paper_trade") as mock_log:
-            result = await executor.execute_trade(signal)
-            
-            assert result["status"] == "paper"
-            assert result["symbol"] == "EURUSDc"  # Testing the suffix addition
-            assert result["direction"] == "BUY"
-            mock_log.assert_called_once()
+        result = await executor.execute_trade(signal)
+
+        assert result["status"] == "PAPER_EXECUTED"
+        assert result["symbol"] == "EURUSDc"  # Testing the suffix addition
+        assert result["direction"] == "BUY"
 
 @pytest.mark.asyncio
 async def test_auto_trade_disabled(executor):

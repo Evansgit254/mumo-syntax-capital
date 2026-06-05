@@ -56,21 +56,27 @@ class DirectMT5Engine:
         """
         Executes a trade directly on the terminal.
         """
+        symbol = signal.get('symbol', '')
+        # Map original symbol to broker symbol (e.g. EURUSD=X -> EURUSD)
+        from core.trade_executor import SYMBOL_MAP
+        base_sym = SYMBOL_MAP.get(symbol, symbol.replace("=X", "").replace("-", ""))
+        from config.manager import config_manager
+        suffix = config_manager.get("mt5_symbol_suffix", "")
+        mapped_symbol = f"{base_sym}{suffix}"
+
         if self.paper_mode:
-            self.logger.info(f"[PAPER] Simulating direct trade for {signal.get('symbol')}")
-            return {"status": "PAPER_EXECUTED", "order_id": int(time.time())}
+            self.logger.info(f"[PAPER] Simulating direct trade for {mapped_symbol}")
+            return {
+                "status": "PAPER_EXECUTED", 
+                "order_id": int(time.time()),
+                "symbol": mapped_symbol,
+                "direction": signal.get('direction')
+            }
 
         if not self.initialized and not self.connect():
             return {"status": "FAILED", "reason": "CONNECTION_ERROR"}
 
-        symbol = signal.get('symbol')
-        # Map original symbol to broker symbol if not already mapped
-        # In this context, we assume the executor hasn't mapped it yet or we just use symbol mapping logic here.
-        # Actually, let's just make it robust.
-        from core.trade_executor import SYMBOL_MAP
-        base_sym = SYMBOL_MAP.get(symbol, symbol.replace("=X", "").replace("-", ""))
-        from config.config import MT5_SYMBOL_SUFFIX
-        symbol = f"{base_sym}{MT5_SYMBOL_SUFFIX}"
+        symbol = mapped_symbol
 
         direction = signal.get('direction', '').upper()
         volume = float(signal.get('volume', 0.01))

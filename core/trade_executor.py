@@ -92,6 +92,22 @@ class TradeExecutor:
         if not self.auto_trade:
             return {"status": "skipped", "reason": "MT5_AUTO_TRADE=false"}
 
+        symbol = signal_data.get("symbol")
+        
+        # 1. Check for live readiness
+        if not self.paper_mode:
+            errors = await self._live_readiness_errors(symbol)
+            if errors:
+                res = {"status": "blocked", "reason": "; ".join(errors)}
+                self._persist_execution_state(signal_data, res)
+                return res
+
+        # 2. Prevent execution if core data is missing
+        if not signal_data.get("entry_price"):
+            res = {"status": "error", "reason": "missing entry_price"}
+            self._persist_execution_state(signal_data, res)
+            return res
+
         # Always use the native engine - Purged MetaAPI checks
         print("🚀 [DIRECT MT5] Dispatching to Native Engine...")
         return self._direct_engine.execute_trade(signal_data)

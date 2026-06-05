@@ -64,11 +64,11 @@ async def test_track_once_buy_sl(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
         # Mock yfinance to return price at SL
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             import pandas as pd
             # Create a real DataFrame to ensure iloc and indexing work perfectly
             mock_data = pd.DataFrame({'Close': [1.0850]}, index=[datetime.now()])
-            mock_ticker.return_value.history.return_value = mock_data
+            mock_ticker.return_value = mock_data
             
             await tracker.track_once()
             
@@ -84,10 +84,10 @@ async def test_track_once_buy_sl(mock_db):
 async def test_track_once_buy_tp3(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             import pandas as pd
             mock_data = pd.DataFrame({'Close': [1.1250]}, index=[datetime.now()])
-            mock_ticker.return_value.history.return_value = mock_data
+            mock_ticker.return_value = mock_data
             
             await tracker.track_once()
             
@@ -103,10 +103,10 @@ async def test_track_once_buy_tp3(mock_db):
 async def test_track_once_buy_tp1_hold(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             import pandas as pd
             mock_data = pd.DataFrame({'Close': [1.1070]}, index=[datetime.now()])
-            mock_ticker.return_value.history.return_value = mock_data
+            mock_ticker.return_value = mock_data
             
             await tracker.track_once()
             
@@ -121,10 +121,10 @@ async def test_track_once_buy_tp1_hold(mock_db):
 async def test_track_once_sell_tp2(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             import pandas as pd
             mock_data = pd.DataFrame({'Close': [1.2850]}, index=[datetime.now()])
-            mock_ticker.return_value.history.return_value = mock_data
+            mock_ticker.return_value = mock_data
             
             await tracker.track_once()
             
@@ -139,12 +139,12 @@ async def test_track_once_sell_tp2(mock_db):
 async def test_track_once_buy_tp2_hold(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             mock_hist = MagicMock()
             import pandas as pd
             mock_hist.empty = False
             mock_hist.__getitem__.return_value = pd.Series([1.1150], index=[datetime.now()]) # Above TP2 but below TP3
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_ticker.return_value = mock_hist
             
             await tracker.track_once()
             
@@ -159,10 +159,10 @@ async def test_track_once_buy_tp2_hold(mock_db):
 async def test_track_once_sell_sl(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             import pandas as pd
             mock_data = pd.DataFrame({'Close': [1.3150]}, index=[datetime.now()])
-            mock_ticker.return_value.history.return_value = mock_data
+            mock_ticker.return_value = mock_data
             
             await tracker.track_once()
             
@@ -177,10 +177,10 @@ async def test_track_once_sell_sl(mock_db):
 async def test_track_once_sell_tp1_hold(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             import pandas as pd
             mock_data = pd.DataFrame({'Close': [1.2930]}, index=[datetime.now()])
-            mock_ticker.return_value.history.return_value = mock_data
+            mock_ticker.return_value = mock_data
             
             await tracker.track_once()
             
@@ -195,8 +195,8 @@ async def test_track_once_sell_tp1_hold(mock_db):
 async def test_track_once_price_fetch_error(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
-            mock_ticker.return_value.history.side_effect = Exception("API Error")
+        with patch('yfinance.download') as mock_ticker:
+            mock_ticker.side_effect = Exception("API Error")
             await tracker.track_once()
             # Just verify it doesn't crash and result remains OPEN
             conn = sqlite3.connect(mock_db)
@@ -209,10 +209,10 @@ async def test_track_once_price_fetch_error(mock_db):
 async def test_track_once_symbol_missing_in_prices(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             mock_hist = MagicMock()
             mock_hist.empty = True # Simulates missing price
-            mock_ticker.return_value.history.return_value = mock_hist
+            mock_ticker.return_value = mock_hist
             
             await tracker.track_once()
             
@@ -237,10 +237,10 @@ async def test_run_loop_test(mock_db):
 async def test_track_once_sell_tp3(mock_db):
     tracker = SignalTracker()
     with patch('signal_tracker.DB_PATH', mock_db):
-        with patch('yfinance.Ticker') as mock_ticker:
+        with patch('yfinance.download') as mock_ticker:
             import pandas as pd
             mock_data = pd.DataFrame({'Close': [1.2750]}, index=[datetime.now()])
-            mock_ticker.return_value.history.return_value = mock_data
+            mock_ticker.return_value = mock_data
             
             await tracker.track_once()
             
