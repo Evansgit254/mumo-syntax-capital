@@ -4,7 +4,6 @@ After=network.target smc-signal-service.service smc-admin-dashboard.service
 
 [Service]
 Type=simple
-User=evans
 WorkingDirectory=/home/evans/smc-scalp-signals
 ExecStart=/home/evans/smc-scalp-signals/venv/bin/python monitoring/health_check.py
 Restart=always

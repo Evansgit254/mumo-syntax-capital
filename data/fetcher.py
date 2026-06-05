@@ -162,8 +162,9 @@ class DataFetcher:
         import asyncio
         provider = DataFetcher._get_provider()
 
-        # 1. Attempt MT5 Broker Fetch if selected
-        if provider == "mt5" and not any(m in symbol for m in ["DXY", "DX-Y", "TNX", "^TNX"]):
+        # 1. Attempt MT5 Broker Fetch if selected AND available
+        from core.direct_mt5_engine import MT5_AVAILABLE
+        if provider == "mt5" and MT5_AVAILABLE and not any(m in symbol for m in ["DXY", "DX-Y", "TNX", "^TNX"]):
             try:
                 from core.trade_executor import get_executor
                 executor = get_executor()
