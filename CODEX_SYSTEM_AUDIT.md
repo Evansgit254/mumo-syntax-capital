@@ -1,6 +1,6 @@
 # CODEX SYSTEM AUDIT: Pure Quant Research Terminal
 
-Date: 2026-06-05
+Date: 2026-06-09
 Current version: `5.4.3-native`  
 Scope: FastAPI backend, Stitch/vanilla dashboard, SQLite persistence, Native MT5 execution engine, execution gate, data fidelity, and governance.
 
@@ -28,9 +28,25 @@ Following a forensic investigation into earlier false-positive trade densities a
 
 **Run 1 Final Strategy Breakdown:**
 | Strategy | Trades | Win Rate | Net R | Status |
-| :--- | ---: | ---: | ---: | :--- |
+| :--- | :--- | :--- | :--- | :--- |
 | CRT H1 | 1,651 | 70.9% | +670.9R | Core baseline |
 | Advanced Patterns | 8 | 62.5% | +4.4R | Active research extension |
+
+**[Addendum: 2026-06-09] Institutional Audit (Run 70)**
+The latest institutional audit (30-day window: `2026-05-11` to `2026-06-09`) was finalized today. It confirms a stable and repeatable edge across primary symbols.
+
+**Run 70 Final Strategy Breakdown:**
+| Strategy | Trades | Win Rate | Net R | Avg R | Status |
+| :--- | ---: | ---: | ---: | ---: | ---: | :--- |
+| CRT H1 | 1,709 | 67.6% | +457.9R | +0.268 | Core baseline |
+| Advanced Patterns | 6 | 83.3% | +6.3R | +1.059 | Active research extension |
+
+**Symbol-Specific High-Conviction Edge:**
+- **GBPJPY**: 76.5% WR (+143.1R)
+- **USDJPY**: 75.0% WR (+100.9R)
+- **Gold (GC=F)**: 69.0% WR (+90.1R)
+
+The audit confirms that `VOLATILE_RANGE` remains the sweet spot for the CRT engine, delivering 76% of total profit.
 
 Engineering actions applied from this audit:
 

@@ -1,4 +1,4 @@
-# Pure Quant Institutional Terminal (v5.3.0) — Technical Implementation Documentation
+# Pure Quant Institutional Terminal (v5.4.3) — Technical Implementation Documentation
 
 This document provides a comprehensive technical overview of the **Pure Quant Institutional Terminal**, an institutional-grade algorithmic engine designed for structural liquidity tracking and deterministic execution. The V5.3.0 release is validated by deep structural evidence yielding strict >70% WR constraints.
 
@@ -95,14 +95,14 @@ The system uses a **Forensic Backtest Suite** that:
 2.  Models realistic institutional friction (Institutional Raw Spreads).
 3.  Calculates Profit Factor, expectancy, and drawdown diagnostics.
 
-Latest database baseline: `database/backtest_results.db`, Run ID `63`, date range `2026-04-07` to `2026-05-29`.
+Latest database baseline: `database/backtest_results.db`, Run ID `72`, date range `2026-05-12` to `2026-06-11`.
 
 | Model | Closed Trades | Win Rate | Net R | Status |
 | :--- | ---: | ---: | ---: | :--- |
-| CRT (H1) | 2,720 | 71.1% | +1,034.1R | Core baseline |
-| Advanced Patterns | 10 | 50.0% | +2.3R | Active research extension |
+| CRT (H1) | 2,318 | 55.0% | +584.1R | Core baseline |
+| Advanced Patterns | 9 | 55.6% | +5.4R | Active research extension |
 
-Run `63` total remains historical evidence. Active signal generation is now intentionally limited to CRT and Advanced Patterns.
+Run `72` is the current institutional audit baseline. Active signal generation is now intentionally limited to CRT and Advanced Patterns.
 ---
 
 ## 8. Technology Stack
@@ -114,10 +114,10 @@ Run `63` total remains historical evidence. Active signal generation is now inte
 ---
 
 ## 9. Conviction Matrix
-| Model | Win Rate | Realistic R-Profit (21d) |
+| Model | Win Rate | Realistic R-Profit (30d) |
 | :--- | :--- | :--- |
-| **CRT (H1)** | 71.1% | +1,034.1R |
-| **Advanced Patterns** | 50.0% | +2.3R |
+| **CRT (H1)** | 55.0% | +584.1R |
+| **Advanced Patterns** | 55.6% | +5.4R |
 
 ---
 

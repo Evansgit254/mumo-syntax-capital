@@ -40,16 +40,17 @@ Maintained pattern-extension engine for strict price-action setups.
 
 ## Performance Matrix (Database-Derived)
 
-Latest audited benchmark: `database/backtest_results.db`, Run ID `69` (30-day window), date range `2026-05-06` to `2026-06-05`.
+Latest audited benchmark: `database/backtest_results.db`, Run ID `72` (30-day window), date range `2026-05-12` to `2026-06-11`.
 
 | Metric | CRT Strategy (H1) | Advanced Patterns |
 | :--- | :--- | :--- |
-| **Closed Trades** | 1,693 | 31 |
-| **Win Rate** | 67.9% | 51.6% |
-| **Net Profit** | +564.0R | +6.1R |
+| **Closed Trades** | 2,318 | 9 |
+| **Win Rate** | 55.0% | 55.6% |
+| **Net Profit** | +584.1R | +5.4R |
 | **Status** | Core baseline | Active research extension |
 
-Run `69` is the current retained operational baseline. Active signal generation remains strictly limited to the CRT and Advanced Pattern engines.
+Run `72` is the current retained operational baseline. Active signal generation remains strictly limited to the CRT and Advanced Pattern engines.
+
 
 ---
 

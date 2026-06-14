@@ -54,6 +54,64 @@ class SignalTracker:
         self.running = True
         signal.signal(signal.SIGINT, self._shutdown)
         signal.signal(signal.SIGTERM, self._shutdown)
+        self._mt5_engine = None
+        self._init_mt5_engine()
+
+    def _init_mt5_engine(self):
+        """Initialize MT5 engine for broker-side SL modification (profit-locking)."""
+        try:
+            from config.manager import config_manager
+            login = config_manager.get("mt5_login")
+            password = config_manager.get("mt5_password")
+            server = config_manager.get("mt5_server")
+            paper_mode = config_manager.get("mt5_paper_mode", True)
+
+            if login and password and server:
+                from core.direct_mt5_engine import DirectMT5Engine
+                self._mt5_engine = DirectMT5Engine(
+                    login=int(login), password=str(password),
+                    server=str(server), paper_mode=bool(paper_mode)
+                )
+                print("🔗 MT5 Engine initialized for broker-side profit-locking")
+            else:
+                print("ℹ️  MT5 credentials not configured — broker SL sync disabled")
+        except Exception as e:
+            print(f"ℹ️  MT5 engine init skipped: {e}")
+
+    def _sync_broker_sl(self, sig: dict, new_sl: float, symbol: str):
+        """
+        Attempt to modify the broker-side SL to lock profits.
+        Maps the DB signal to a broker position via order_id or symbol match.
+        V5.4.4: Broker-Side Profit Lock
+        """
+        if self._mt5_engine is None:
+            return
+
+        try:
+            # Try matching by order_id (ticket) stored on the signal
+            order_id = sig.get('order_id') or sig.get('mt5_ticket')
+            if order_id and int(order_id) > 0:
+                result = self._mt5_engine.modify_position_sl(int(order_id), symbol, new_sl)
+                if result.get("status") in ("LIVE_MODIFIED", "PAPER_MODIFIED"):
+                    print(f"🔒 Broker SL locked: {symbol} → {new_sl:.5f} ({result['status']})")
+                return
+
+            # Fallback: match by symbol from open positions
+            positions = self._mt5_engine.get_open_positions()
+            # Map tracker symbol to broker symbol
+            broker_sym = symbol.replace("=X", "").replace("-USD", "USD")
+            from config.manager import config_manager
+            suffix = config_manager.get("mt5_symbol_suffix", "")
+            broker_sym = f"{broker_sym}{suffix}"
+
+            for pos in positions:
+                if pos["symbol"] == broker_sym and pos["type"] == sig['direction']:
+                    result = self._mt5_engine.modify_position_sl(pos["ticket"], broker_sym, new_sl)
+                    if result.get("status") in ("LIVE_MODIFIED", "PAPER_MODIFIED"):
+                        print(f"🔒 Broker SL locked: {broker_sym} ticket={pos['ticket']} → {new_sl:.5f}")
+                    return
+        except Exception as e:
+            print(f"⚠️ Broker SL sync error: {e}")
 
     def _shutdown(self, signum, frame):
         print("\n⏹️  Shutdown signal received. Stopping tracker...")
@@ -173,6 +231,10 @@ class SignalTracker:
                         status_str = new_result
                     else:
                         status_str = f"OPEN (Hit TP{new_max_tp}, SL moved to {new_sl:.5f})"
+
+                    # V5.4.4: Broker-Side Profit Lock — sync SL to broker when moved
+                    if new_sl != sl:
+                        self._sync_broker_sl(dict(sig), new_sl, symbol)
 
                     # V31.0: Settlement Logic (Pips & Paper Account)
                     pips = 0.0

@@ -182,8 +182,15 @@ class BacktestEngine:
 
     def _simulate_exit(self, future_df: pd.DataFrame, signal: Dict) -> Dict:
         """
-        Models exit conditions with realistic execution friction (Spread + Slippage).
-        V5.1.1: Institutional Audit Mode
+        Models exit conditions with ICT breakeven mechanic and multi-tier TPs.
+        V5.4.4: Profit-Locking Institutional Mode
+
+        Exit ladder:
+          - TP0 (Equilibrium): Move SL to breakeven, let trade run
+          - TP1 (Opposite Extreme): Primary target win
+          - TP2 (Extension): Runner win (max R)
+          - SL hit before TP0: Full loss (-1R)
+          - SL hit after TP0 (at BE): Breakeven (0R)
         """
         from config.config import SPREAD_PIPS, SLIPPAGE_PIPS
         if future_df.empty:
@@ -203,32 +210,73 @@ class BacktestEngine:
         # Total execution friction in price points
         total_friction = (SPREAD_PIPS + SLIPPAGE_PIPS) * pip_value
 
-        entry, sl, tp = float(signal['entry_price']), float(signal['sl']), float(signal['tp1'])
+        entry = float(signal['entry_price'])
+        sl = float(signal['sl'])
+        tp0 = float(signal.get('tp0', 0))
+        tp1 = float(signal['tp1'])
+        tp2 = float(signal.get('tp2', 0))
         direction = signal['direction'].upper()
         
         # Original risk for R-multiple calculation
         risk = abs(entry - sl)
-        if risk <= 0: return {'result': 'ERROR', 'pips': 0, 'closed_at': None}
+        if risk <= 0:
+            return {'result': 'ERROR', 'pips': 0, 'closed_at': None}
+
+        # If tp0 is missing or invalid, fall back to binary TP1/SL
+        has_profit_lock = tp0 > 0 and tp2 > 0
+
+        # Track whether breakeven has been triggered
+        be_triggered = False
+        current_sl = sl
 
         for ts, row in future_df.iterrows():
             high, low = row['high'], row['low']
             
             if direction == 'BUY':
-                # BUY SL is bid-based. Slippage effectively moves SL "closer" to entry in bid terms.
-                # BUY TP is ask-based. Spread makes TP "farther" from current bid.
-                if low <= (sl + total_friction): 
-                    return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
-                if high >= (tp + total_friction): 
-                    net_tp_win = abs(tp - entry) - total_friction
-                    return {'result': 'TP1', 'pips': net_tp_win / risk, 'closed_at': ts.isoformat()}
-            else:
-                # SELL SL is ask-based. Spread moves SL "closer" to entry in ask terms.
-                # SELL TP is bid-based. Slippage makes TP "farther" from current bid.
-                if high >= (sl - total_friction): 
-                    return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
-                if low <= (tp - total_friction): 
-                    net_tp_win = abs(entry - tp) - total_friction
-                    return {'result': 'TP1', 'pips': net_tp_win / risk, 'closed_at': ts.isoformat()}
+                # --- Profit-locking: check TP0 for BE trigger ---
+                if has_profit_lock and not be_triggered and high >= (tp0 + total_friction):
+                    be_triggered = True
+                    current_sl = entry  # Move SL to breakeven
+
+                # --- Check TP2 (Extension / Runner) first ---
+                if has_profit_lock and high >= (tp2 + total_friction):
+                    net_win = abs(tp2 - entry) - total_friction
+                    return {'result': 'TP2', 'pips': net_win / risk, 'closed_at': ts.isoformat()}
+
+                # --- Check TP1 (Opposite Extreme) ---
+                if high >= (tp1 + total_friction):
+                    net_win = abs(tp1 - entry) - total_friction
+                    return {'result': 'TP1', 'pips': net_win / risk, 'closed_at': ts.isoformat()}
+
+                # --- Check SL (original or breakeven) ---
+                if low <= (current_sl + total_friction):
+                    if be_triggered:
+                        return {'result': 'BE', 'pips': 0.0, 'closed_at': ts.isoformat()}
+                    else:
+                        return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
+
+            else:  # SELL
+                # --- Profit-locking: check TP0 for BE trigger ---
+                if has_profit_lock and not be_triggered and low <= (tp0 - total_friction):
+                    be_triggered = True
+                    current_sl = entry  # Move SL to breakeven
+
+                # --- Check TP2 (Extension / Runner) first ---
+                if has_profit_lock and low <= (tp2 - total_friction):
+                    net_win = abs(entry - tp2) - total_friction
+                    return {'result': 'TP2', 'pips': net_win / risk, 'closed_at': ts.isoformat()}
+
+                # --- Check TP1 (Opposite Extreme) ---
+                if low <= (tp1 - total_friction):
+                    net_win = abs(entry - tp1) - total_friction
+                    return {'result': 'TP1', 'pips': net_win / risk, 'closed_at': ts.isoformat()}
+
+                # --- Check SL (original or breakeven) ---
+                if high >= (current_sl - total_friction):
+                    if be_triggered:
+                        return {'result': 'BE', 'pips': 0.0, 'closed_at': ts.isoformat()}
+                    else:
+                        return {'result': 'SL', 'pips': -1.0, 'closed_at': ts.isoformat()}
                 
         return {'result': 'OPEN', 'pips': 0, 'closed_at': None}
 

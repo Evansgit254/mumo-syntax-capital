@@ -1,10 +1,10 @@
 # Quant Database Audit
 
-Audit date: 2026-05-29
+Audit date: 2026-06-11
 
-Engineering update: 2026-06-03
+Engineering update: 2026-06-11
 
-System version: `5.3.0-stable`
+System version: `5.4.4-native`
 
 Primary evidence sources:
 
@@ -14,24 +14,24 @@ Primary evidence sources:
 
 ## Backtest Baseline
 
-Latest benchmark run: Run ID `1` (30-Day Window)
+Latest benchmark run: Run ID `72` (Institutional Audit - 30 Days)
 
-Date range: `2026-05-05` to `2026-06-04`
+Date range: `2026-05-12` to `2026-06-11`
 
 Closed-trade totals:
 
 | Metric | Value |
 | :--- | ---: |
-| Closed trades | 1,659 |
-| Win rate | 70.9% |
-| Net result | +675.3R |
+| Closed trades | 2,327 |
+| Win rate | 52.6% |
+| Net result | +589.5R |
 
 Strategy breakdown:
 
 | Strategy | Closed Trades | Win Rate | Net R | Status |
 | :--- | ---: | ---: | ---: | :--- |
-| CRT H1 | 1,651 | 70.9% | +670.9R | Core baseline |
-| Advanced Patterns | 8 | 62.5% | +4.4R | Active research extension |
+| CRT H1 | 2,318 | 55.0% | +584.1R | Core baseline |
+| Advanced Patterns | 9 | 55.6% | +5.4R | Active research extension |
 
 ## Engineering Interpretation
 

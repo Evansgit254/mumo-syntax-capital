@@ -166,6 +166,94 @@ class DirectMT5Engine:
             "broker": info.company
         }
 
+    def modify_position_sl(self, ticket: int, symbol: str, new_sl: float) -> Dict:
+        """
+        Modifies the stop-loss of an open position on the broker side.
+        Used by the Signal Tracker to lock profits at breakeven or trail stops.
+        V5.4.4: Broker-Side Profit Lock
+        """
+        if self.paper_mode:
+            self.logger.info(f"[PAPER] SL modify: ticket={ticket} {symbol} → SL={new_sl:.5f}")
+            return {"status": "PAPER_MODIFIED", "ticket": ticket, "new_sl": new_sl}
+
+        if not MT5_AVAILABLE:
+            return {"status": "SKIPPED", "reason": "MT5_NOT_AVAILABLE"}
+
+        if not self.initialized and not self.connect():
+            return {"status": "FAILED", "reason": "CONNECTION_ERROR"}
+
+        # Get the current position to read its TP
+        positions = mt5.positions_get(ticket=ticket)
+        if positions is None or len(positions) == 0:
+            return {"status": "FAILED", "reason": f"POSITION_NOT_FOUND: ticket={ticket}"}
+
+        position = positions[0]
+        current_tp = position.tp
+        current_sl = position.sl
+
+        # Don't modify if new SL is worse than current SL
+        if position.type == mt5.ORDER_TYPE_BUY:
+            if new_sl <= current_sl and current_sl > 0:
+                return {"status": "SKIPPED", "reason": "NEW_SL_WORSE_THAN_CURRENT"}
+        else:  # SELL
+            if new_sl >= current_sl and current_sl > 0:
+                return {"status": "SKIPPED", "reason": "NEW_SL_WORSE_THAN_CURRENT"}
+
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": ticket,
+            "symbol": symbol,
+            "sl": new_sl,
+            "tp": current_tp,  # Keep existing TP
+        }
+
+        result = mt5.order_send(request)
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            comment = result.comment if result else "No response"
+            self.logger.error(f"SL Modify Failed: ticket={ticket} → {comment}")
+            return {"status": "FAILED", "reason": comment}
+
+        self.logger.info(f"✅ SL Modified: ticket={ticket} {symbol} SL={current_sl:.5f}→{new_sl:.5f}")
+        return {
+            "status": "LIVE_MODIFIED",
+            "ticket": ticket,
+            "old_sl": current_sl,
+            "new_sl": new_sl,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    def get_open_positions(self, magic: int = 20260605) -> list:
+        """
+        Fetches all open positions placed by this system (filtered by magic number).
+        Used by Signal Tracker to map DB signals to broker tickets.
+        """
+        if not MT5_AVAILABLE:
+            return []
+
+        if not self.initialized and not self.connect():
+            return []
+
+        positions = mt5.positions_get()
+        if positions is None:
+            return []
+
+        return [
+            {
+                "ticket": p.ticket,
+                "symbol": p.symbol,
+                "type": "BUY" if p.type == mt5.ORDER_TYPE_BUY else "SELL",
+                "volume": p.volume,
+                "price_open": p.price_open,
+                "sl": p.sl,
+                "tp": p.tp,
+                "profit": p.profit,
+                "magic": p.magic,
+                "comment": p.comment,
+            }
+            for p in positions
+            if p.magic == magic
+        ]
+
     def close_connection(self):
         if self.initialized:
             mt5.shutdown()
