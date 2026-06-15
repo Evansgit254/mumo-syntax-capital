@@ -921,6 +921,27 @@ async def update_client(chat_id: str, update: ClientUpdate, current_user: User =
         if conn:
             conn.close()
 
+@app.delete("/api/clients/{chat_id}/delete")
+async def delete_client(chat_id: str, current_user: User = Depends(get_current_user)):
+    require_role(current_user, "admin", "operator")
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        client = conn.execute("SELECT * FROM clients WHERE telegram_chat_id = ?", (chat_id,)).fetchone()
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+            
+        conn.execute("DELETE FROM clients WHERE telegram_chat_id = ?", (chat_id,))
+        conn.commit()
+        return {"status": "success"}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        print(f"Error deleting client {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            conn.close()
+
 @app.post("/api/clients/{chat_id}/toggle-signals")
 async def toggle_signals(chat_id: str, current_user: User = Depends(get_current_user)):
     """Toggle Telegram signal delivery for a client"""

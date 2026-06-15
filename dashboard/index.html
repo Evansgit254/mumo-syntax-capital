@@ -1526,7 +1526,6 @@
             }
         }
 
-        // CLIENTS ENGINE
         async function loadClients() {
             try {
                 const res = await apiFetch('/api/clients');
@@ -1538,15 +1537,19 @@
                 clients.forEach(c => {
                     const row = document.createElement('tr');
                     const tierColor = c.subscription_tier === 'GOLD' ? 'var(--acc-amber)' : 'var(--text-secondary)';
+                    const signalActive = c.is_active ? true : false;
+                    const dashActive = c.dashboard_access ? true : false;
                     row.innerHTML = `
                         <td class="mono">${c.telegram_chat_id}</td>
                         <td class="mono">$${(c.account_balance || 0).toFixed(2)}</td>
                         <td><span class="badge" style="border: 1px solid ${tierColor}; color: ${tierColor};">${c.subscription_tier || 'BASIC'}</span></td>
                         <td class="mono text-xs">${c.subscription_expiry || 'N/A'}</td>
                         <td class="mono text-xs">${c.total_signals || 0}</td>
-                        <td class="text-right">
-                            <i class="fas fa-edit text-cyan" style="cursor: pointer; margin-right: 12px;" onclick="editClient(${JSON.stringify(c).replace(/"/g, '&quot;')})"></i>
-                            <i class="fas fa-trash text-crimson" style="cursor: pointer;" onclick="deleteClient('${c.telegram_chat_id}')"></i>
+                        <td class="text-right" style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+                            <i class="fas fa-signal" title="${signalActive ? 'Signals ACTIVE — click to disable' : 'Signals DISABLED — click to enable'}" style="cursor: pointer; color: ${signalActive ? 'var(--acc-emerald)' : 'var(--text-tertiary)'}; font-size: 12px;" onclick="toggleSignals('${c.telegram_chat_id}')"></i>
+                            <i class="fas fa-desktop" title="${dashActive ? 'Dashboard ACTIVE — click to revoke' : 'Dashboard DISABLED — click to grant'}" style="cursor: pointer; color: ${dashActive ? 'var(--acc-cyan)' : 'var(--text-tertiary)'}; font-size: 12px;" onclick="toggleDashboard('${c.telegram_chat_id}')"></i>
+                            <i class="fas fa-edit" title="Edit client" style="cursor: pointer; color: var(--acc-cyan); font-size: 12px;" onclick="editClient(${JSON.stringify(c).replace(/"/g, '&quot;')})"></i>
+                            <i class="fas fa-trash" title="Delete client" style="cursor: pointer; color: var(--acc-crimson); font-size: 12px;" onclick="deleteClient('${c.telegram_chat_id}')"></i>
                         </td>
                     `;
                     fragment.appendChild(row);
@@ -1554,6 +1557,24 @@
                 tbody.innerHTML = '';
                 tbody.appendChild(fragment);
             } catch { console.error("Client Load Failed"); }
+        }
+
+        async function toggleSignals(chatId) {
+            try {
+                const res = await apiFetch(`/api/clients/${chatId}/toggle-signals`, { method: 'POST' });
+                const data = await res.json();
+                showToast(data.message || 'SIGNAL_TOGGLE_SYNCED');
+                loadClients();
+            } catch { showToast("SIGNAL_TOGGLE_ERROR", "error"); }
+        }
+
+        async function toggleDashboard(chatId) {
+            try {
+                const res = await apiFetch(`/api/clients/${chatId}/toggle-dashboard`, { method: 'POST' });
+                const data = await res.json();
+                showToast(data.message || 'DASHBOARD_TOGGLE_SYNCED');
+                loadClients();
+            } catch { showToast("DASHBOARD_TOGGLE_ERROR", "error"); }
         }
 
         function editClient(client) {
