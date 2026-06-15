@@ -519,15 +519,29 @@ def _live_enablement_errors(proposed: dict[str, str]) -> list[str]:
     data_provider = proposed.get("data_provider", settings.data_provider)
     paper_raw = proposed.get("mt5_paper_mode", str(settings.mt5_paper_mode).lower())
     approved_raw = proposed.get("live_trading_approved", str(settings.live_trading_approved).lower())
+    require_broker_raw = proposed.get("require_broker_data_for_live", str(settings.require_broker_data_for_live).lower())
     paper_mode = str(paper_raw).lower() == "true"
     approved = str(approved_raw).lower() == "true"
+    require_broker_data = str(require_broker_raw).lower() == "true"
     errors = []
     if paper_mode:
         return errors
     if not approved:
         errors.append("live_trading_approved must be true")
-    if not settings.mt5_login or not settings.mt5_password:
-        errors.append("MT5 Terminal credentials must be configured")
+    if require_broker_data and data_provider != "mt5":
+        errors.append("data_provider must be mt5 when require_broker_data_for_live=true")
+    login = proposed.get("mt5_login", settings.mt5_login)
+    password = proposed.get("mt5_password", settings.mt5_password)
+    server = proposed.get("mt5_server", settings.mt5_server)
+    
+    login_valid = False
+    try:
+        login_valid = int(login or 0) > 0
+    except ValueError:
+        pass
+        
+    if not login_valid or not password or not server:
+        errors.append("MT5 Terminal credentials must be properly configured")
     return errors
 
 from fastapi.responses import FileResponse
@@ -675,6 +689,15 @@ async def update_mt5_config(config: MT5Config, current_user: User = Depends(get_
     require_role(current_user, "risk_manager")
     conn = None
     try:
+        proposed = {
+            "mt5_login": str(config.login),
+            "mt5_password": config.password,
+            "mt5_server": config.server,
+            "mt5_paper_mode": "true" if config.paperMode else "false",
+        }
+        live_errors = _live_enablement_errors(proposed)
+        if not config.paperMode and live_errors:
+            raise HTTPException(status_code=400, detail="Live enablement blocked: " + "; ".join(live_errors))
         conn = get_db_connection(DB_CLIENTS)
         updates = [
             ("mt5_login", str(config.login), "int"),
@@ -1026,12 +1049,12 @@ async def stripe_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     if not STRIPE_WEBHOOK_SECRET and not ALLOW_UNSIGNED_STRIPE_WEBHOOK:
-        if event.get("type") == "checkout.session.completed":
-            raise HTTPException(
-                status_code=503,
-                detail="STRIPE_WEBHOOK_SECRET is required unless ALLOW_UNSIGNED_STRIPE_WEBHOOK=true"
-            )
-    elif not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="STRIPE_WEBHOOK_SECRET is required unless ALLOW_UNSIGNED_STRIPE_WEBHOOK=true"
+        )
+
+    if not STRIPE_WEBHOOK_SECRET:
         print("⚠️ STRIPE_WEBHOOK_SECRET not set. Unsigned webhook bypass enabled for development.")
 
     # Handle the checkout.session.completed event
@@ -1505,6 +1528,8 @@ async def update_weight_override(data: dict, current_user: User = Depends(get_cu
 @app.get("/api/logs/{service}")
 async def get_logs(service: str, lines: int = 100, current_user: User = Depends(get_current_user)):
     """V19.0: System Log Retrieval - checks local files first, then journalctl."""
+    require_role(current_user, "operator", "risk_manager")
+    lines = max(1, min(int(lines), 500))
     # Mapping service IDs to local log files
     log_map = {
         "smc-admin-dashboard": "admin.log",
@@ -1530,7 +1555,7 @@ async def get_logs(service: str, lines: int = 100, current_user: User = Depends(
 
     # 2. Fallback to journalctl
     try:
-        cmd = ["sudo", "journalctl", "-u", f"{service}.service", "-n", str(lines), "--no-pager"]
+        cmd = ["journalctl", "-u", f"{service}.service", "-n", str(lines), "--no-pager"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         
         if result.returncode == 0 and result.stdout.strip():

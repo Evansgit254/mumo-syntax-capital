@@ -6,7 +6,7 @@ from core.filters.risk_manager import RiskManager
 from core.filters.macro_filter import MacroFilter
 from core.filters.news_filter import NewsFilter
 from indicators.calculations import IndicatorCalculator
-import config.config as cfg
+from config.manager import config_manager
 from core.alpha_factors import AlphaFactors
 from core.alpha_combiner import AlphaCombiner
 
@@ -219,8 +219,9 @@ class CRTStrategy(BaseStrategy):
 
             quality_score = AlphaCombiner.calculate_quality_score(factors, signal_value, base_boost=base_boost)
 
-            if quality_score < cfg.MIN_QUALITY_SCORE:
-                log_event("FILTER_BLOCKED", f"Quality Score {quality_score} < {cfg.MIN_QUALITY_SCORE}")
+            min_quality_score = config_manager.get("min_quality_score", 5.0, refresh=True)
+            if quality_score < min_quality_score:
+                log_event("FILTER_BLOCKED", f"Quality Score {quality_score} < {min_quality_score}")
                 return None
 
             # ─── 8. Risk & Results ──────────────────────────────────────────────
