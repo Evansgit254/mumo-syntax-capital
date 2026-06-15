@@ -1,0 +1,19 @@
+[Unit]
+Description=Interactive Telegram Bot for TradingExpert
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/evans/mumo-syntax-capital
+Environment="PYTHONPATH=/home/evans/mumo-syntax-capital"
+ExecStart=/home/evans/mumo-syntax-capital/venv/bin/python /home/evans/mumo-syntax-capital/app/interactive_bot.py
+Restart=always
+RestartSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mumo-bot
+
+[Install]
+WantedBy=multi-user.target

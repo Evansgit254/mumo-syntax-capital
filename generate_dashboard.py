@@ -66,7 +66,7 @@ def generate_dashboard(db_path, output_path, run_id=None):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Backtest Results - SMC Scalp Signals</title>
+        <title>Backtest Results - Mumo Syntax & Capital</title>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <style>
             :root {{
@@ -164,7 +164,7 @@ def generate_dashboard(db_path, output_path, run_id=None):
     <body>
         <div class="container">
             <div class="header">
-                <h1>SMC Scalp Signals - Backtest Results</h1>
+                <h1>Mumo Syntax & Capital - Backtest Results</h1>
                 <p>Date Range: {run['start_date']} to {run['end_date']} | Run ID: {run['id']}</p>
             </div>
 

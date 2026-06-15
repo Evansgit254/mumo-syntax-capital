@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/evans/smc-scalp-signals
-Environment="PYTHONPATH=/home/evans/smc-scalp-signals"
-ExecStart=/home/evans/smc-scalp-signals/venv/bin/python /home/evans/smc-scalp-signals/signal_service.py
+WorkingDirectory=/home/evans/mumo-syntax-capital
+Environment="PYTHONPATH=/home/evans/mumo-syntax-capital"
+ExecStart=/home/evans/mumo-syntax-capital/venv/bin/python /home/evans/mumo-syntax-capital/signal_service.py
 Restart=always
 RestartSec=30
 

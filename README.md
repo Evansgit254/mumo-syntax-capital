@@ -59,8 +59,8 @@ Run `72` is the current retained operational baseline. Active signal generation 
 ### 1. Initialize Terminal
 ```bash
 # Clone the institutional core
-git clone https://github.com/Evansgit254/smc-scalp-signals.git
-cd smc-scalp-signals
+git clone https://github.com/Evansgit254/mumo-syntax-capital.git
+cd mumo-syntax-capital
 
 # Deploy Environment
 pip install -r requirements.txt

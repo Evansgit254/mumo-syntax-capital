@@ -5,14 +5,14 @@
 
 set -euo pipefail
 
-PROJECT_DIR="${1:-/home/evans/smc-scalp-signals}"
+PROJECT_DIR="${1:-/home/evans/mumo-syntax-capital}"
 SYSTEMD_DIR="${2:-/etc/systemd/system}"
 VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
 UNITS=(
-  smc-signal-service.service
-  smc-admin-dashboard.service
-  smc-signal-tracker.service
-  smc-interactive-bot.service
+  mumo-signal-service.service
+  mumo-admin-dashboard.service
+  mumo-signal-tracker.service
+  mumo-interactive-bot.service
 )
 
 if [[ ! -x "$VENV_PYTHON" ]]; then
@@ -34,7 +34,7 @@ for unit in "${UNITS[@]}"; do
 done
 
 sudo systemctl daemon-reload
-sudo systemctl restart smc-signal-service smc-admin-dashboard smc-signal-tracker
-sudo systemctl stop smc-interactive-bot || true
+sudo systemctl restart mumo-signal-service mumo-admin-dashboard mumo-signal-tracker
+sudo systemctl stop mumo-interactive-bot || true
 
-sudo systemctl status smc-signal-service smc-admin-dashboard smc-signal-tracker --no-pager -l
+sudo systemctl status mumo-signal-service mumo-admin-dashboard mumo-signal-tracker --no-pager -l

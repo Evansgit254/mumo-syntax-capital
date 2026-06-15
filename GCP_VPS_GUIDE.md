@@ -14,7 +14,7 @@ Since you already have a Google Cloud (GCP) account, you can deploy your trading
    - Click **Create Instance**.
 
 2. **Configure the Instance**
-   - **Name:** `smc-trading-bot`
+   - **Name:** `mumo-trading-bot`
    - **Region:** Pick a region close to your broker's servers (e.g., London, New York) to minimize latency.
    - **Machine Configuration:** 
      - Series: **E2**
@@ -39,7 +39,7 @@ Since you already have a Google Cloud (GCP) account, you can deploy your trading
 ## Phase 2: Connecting from your Mac
 
 1. **Set your Windows Password**
-   - Once the instance has a green checkmark next to it, click on the **Instance name** (`smc-trading-bot`) to open its details.
+   - Once the instance has a green checkmark next to it, click on the **Instance name** (`mumo-trading-bot`) to open its details.
    - At the top of the page, click the **Set Windows password** button.
    - Confirm your username (usually your Google account name).
    - GCP will generate a random password for you. **Copy this password immediately!** (You cannot see it again once you close the window).
@@ -63,7 +63,7 @@ Since you already have a Google Cloud (GCP) account, you can deploy your trading
 
 ## Phase 3: Moving the Bot to the Server
 
-Now that you're on the Windows VPS, follow the **[VPS_DEPLOYMENT_GUIDE.md](file:///Users/kiplaa/Desktop/Projects/smc-scalp-signals/VPS_DEPLOYMENT_GUIDE.md)**:
+Now that you're on the Windows VPS, follow the **[VPS_DEPLOYMENT_GUIDE.md](file:///Users/kiplaa/Desktop/Projects/mumo-syntax-capital/VPS_DEPLOYMENT_GUIDE.md)**:
 
 1. Copy-paste your zipped project folder directly from your Mac desktop into the Windows Remote Desktop window.
 2. Open Microsoft Edge on the VPS and download/install **Python 3.10+**.

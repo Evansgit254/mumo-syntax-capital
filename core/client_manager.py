@@ -35,13 +35,16 @@ class ClientManager:
         
         
         # Add new columns if they don't exist (Migration)
-        try:
-            cursor.execute("ALTER TABLE clients ADD COLUMN subscription_expiry TIMESTAMP")
-            cursor.execute("ALTER TABLE clients ADD COLUMN subscription_tier TEXT DEFAULT 'BASIC'")
-            cursor.execute("ALTER TABLE clients ADD COLUMN dashboard_access BOOLEAN DEFAULT 0")
-        except sqlite3.OperationalError:
-            # Columns already exist
-            pass
+        for col_name, col_def in [
+            ("subscription_expiry", "TIMESTAMP"),
+            ("subscription_tier", "TEXT DEFAULT 'BASIC'"),
+            ("dashboard_access", "BOOLEAN DEFAULT 0"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE clients ADD COLUMN {col_name} {col_def}")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
         
         conn.commit()
         conn.close()

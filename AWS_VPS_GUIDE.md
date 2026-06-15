@@ -12,7 +12,7 @@ This guide walks you through setting up a free Windows VPS on Amazon Web Service
 
 3. **Launch Instance**
    - Click the orange **"Launch instance"** button.
-   - **Name:** Give your server a name (e.g., `SMC-Trading-Bot`).
+   - **Name:** Give your server a name (e.g., `Mumo-Trading-Bot`).
    - **OS Images (AMI):** Search for "Windows" and select **Microsoft Windows Server 2022 Base**. 
      - *Crucial:* Ensure it has the "**Free tier eligible**" badge under it.
    - **Instance Type:** Select **t2.micro** (or `t3.micro` depending on your region). It should say "Free tier eligible".
@@ -65,7 +65,7 @@ Windows servers use a protocol called RDP (Remote Desktop Protocol). Macs don't 
 
 ## Phase 3: Moving the Bot to the Server
 
-Now that you're on the Windows VPS, follow the **[VPS_DEPLOYMENT_GUIDE.md](file:///Users/kiplaa/Desktop/Projects/smc-scalp-signals/VPS_DEPLOYMENT_GUIDE.md)**:
+Now that you're on the Windows VPS, follow the **[VPS_DEPLOYMENT_GUIDE.md](file:///Users/kiplaa/Desktop/Projects/mumo-syntax-capital/VPS_DEPLOYMENT_GUIDE.md)**:
 
 1. Copy-paste your zipped project folder directly from your Mac desktop into the Windows Remote Desktop window.
 2. Open Microsoft Edge on the VPS and download/install **Python 3.10+**.

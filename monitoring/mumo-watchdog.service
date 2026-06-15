@@ -5,9 +5,9 @@ After=network.target
 [Service]
 Type=oneshot
 User=evans
-WorkingDirectory=/home/evans/smc-scalp-signals
+WorkingDirectory=/home/evans/mumo-syntax-capital
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/home/evans/smc-scalp-signals/venv/bin/python /home/evans/smc-scalp-signals/monitoring/watchdog.py
+ExecStart=/home/evans/mumo-syntax-capital/venv/bin/python /home/evans/mumo-syntax-capital/monitoring/watchdog.py
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=smc-watchdog
+SyslogIdentifier=mumo-watchdog

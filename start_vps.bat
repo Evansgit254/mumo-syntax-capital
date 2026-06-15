@@ -1,6 +1,6 @@
 @echo off
 echo ========================================================
-echo Pure Quant SMC Scalp Signals - Windows VPS Startup
+echo Pure Quant Mumo Syntax & Capital - Windows VPS Startup
 echo ========================================================
 echo.
 

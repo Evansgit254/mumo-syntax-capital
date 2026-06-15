@@ -1,5 +1,5 @@
 #!/bin/bash
-# Manual Startup Script for SMC Scalp Signals
+# Manual Startup Script for Mumo Syntax & Capital
 # Use this when systemctl --user is failing to connect to the bus.
 
 # BASE_DIR should be the directory where the script is located
@@ -7,7 +7,7 @@ BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$BASE_DIR"
 export PYTHONPATH=$BASE_DIR
 
-echo "🚀 Starting SMC Scalp Signals System..."
+echo "🚀 Starting Mumo Syntax & Capital System..."
 
 # 1. Kill any existing processes (forceful) to start clean
 echo "🧹 Cleaning up old processes..."
@@ -15,7 +15,7 @@ pkill -9 -f "signal_service.py"
 pkill -9 -f "signal_tracker.py"
 pkill -9 -f "admin_server.py"
 pkill -9 -f "interactive_bot.py"
-pkill -9 -f "smc-scalp-signals"
+pkill -9 -f "mumo-syntax-capital"
 
 sleep 2
 

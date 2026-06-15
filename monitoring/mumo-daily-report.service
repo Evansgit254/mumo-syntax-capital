@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily Signal Service Performance Report
+After=network.target
+
+[Service]
+Type=oneshot
+User=evans
+WorkingDirectory=/home/evans/mumo-syntax-capital
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/home/evans/mumo-syntax-capital/venv/bin/python /home/evans/mumo-syntax-capital/monitoring/daily_report.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mumo-daily-report

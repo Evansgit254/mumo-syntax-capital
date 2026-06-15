@@ -1,0 +1,13 @@
+[Unit]
+Description=SMC Institutional Health Watchdog
+After=network.target mumo-signal-service.service mumo-admin-dashboard.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/evans/mumo-syntax-capital
+ExecStart=/home/evans/mumo-syntax-capital/venv/bin/python monitoring/health_check.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

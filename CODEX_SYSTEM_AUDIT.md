@@ -62,7 +62,7 @@ Execution evidence boundary:
 
 ## Executive Summary
 
-This is the active project audit for `/home/evans/Projects/smc-scalp-signals`.
+This is the active project audit for `/home/evans/Projects/mumo-syntax-capital`.
 
 The current codebase is advanced and it already includes encrypted Native MT5 credential persistence, role-aware admin users, a Native-backed `TradeExecutor`, an `ExecutionGate`, persistent trade reservations, strategy toggles, and execution state fields on `signals`.
 

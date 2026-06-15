@@ -9,7 +9,7 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." \u0026\u0026 pwd)"
 VIRTUAL_USER="evans" # The user the services should run as
 VENV_PATH="$PROJECT_DIR/venv"
-LOCAL_DEV_PATH="/home/evans/Projects/TradingExpert/smc-scalp-signals"
+LOCAL_DEV_PATH="/home/evans/Projects/TradingExpert/mumo-syntax-capital"
 
 echo "🚀 Starting TradingExpert Deployment..."
 
@@ -42,7 +42,7 @@ sudo ufw --force enable
 
 # 6. Install Systemd Services
 echo "⚙️ Registering systemd services..."
-SERVICES=("smc-admin-dashboard" "smc-signal-service" "smc-interactive-bot" "smc-signal-tracker")
+SERVICES=("mumo-admin-dashboard" "mumo-signal-service" "mumo-interactive-bot" "mumo-signal-tracker")
 
 for SERVICE in "${SERVICES[@]}"; do
     if [ -f "$PROJECT_DIR/$SERVICE.service" ]; then
@@ -62,4 +62,4 @@ done
 
 echo "✅ Deployment Complete!"
 echo "📡 Admin Dashboard should be live at: http://$(curl -s ifconfig.me):5000"
-echo "📊 Check service status with: sudo systemctl status smc-*"
+echo "📊 Check service status with: sudo systemctl status mumo-*"

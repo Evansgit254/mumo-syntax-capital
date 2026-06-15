@@ -1,11 +1,11 @@
 [Unit]
 Description=Run Signal Service Watchdog every 5 minutes
-Requires=smc-watchdog.service
+Requires=mumo-watchdog.service
 
 [Timer]
 OnBootSec=5min
 OnUnitActiveSec=5min
-Unit=smc-watchdog.service
+Unit=mumo-watchdog.service
 
 [Install]
 WantedBy=timers.target

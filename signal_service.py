@@ -306,9 +306,10 @@ class SignalService:
                         from core.trade_executor import get_executor
                         executor = get_executor()
                         trade_result = await executor.execute_trade(signal_data)
-                        mode_tag = "📝 PAPER" if trade_result.get("status") == "paper" else "✅ LIVE"
+                        trade_status = str(trade_result.get("status", "")).upper()
+                        mode_tag = "📝 PAPER" if trade_status == "PAPER_EXECUTED" else "✅ LIVE"
                         print(f"  {mode_tag} Trade: {signal_data.get('direction')} {signal_data.get('symbol')} → {trade_result.get('status')}")
-                        if trade_result.get("status") == "error":
+                        if trade_status not in {"PAPER_EXECUTED", "LIVE_EXECUTED"}:
                             ExecutionGate.release_reservation(
                                 signal_data.get("symbol"),
                                 DB_SIGNALS,

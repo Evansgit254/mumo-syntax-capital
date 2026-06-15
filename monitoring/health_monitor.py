@@ -101,7 +101,7 @@ class HealthMonitor:
         """Check if systemd service is running."""
         try:
             result = subprocess.run(
-                ['systemctl', 'is-active', 'smc-signal-service'],
+                ['systemctl', 'is-active', 'mumo-signal-service'],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -111,7 +111,7 @@ class HealthMonitor:
             
             # Get service uptime
             uptime_result = subprocess.run(
-                ['systemctl', 'show', 'smc-signal-service', '--property=ActiveEnterTimestamp'],
+                ['systemctl', 'show', 'mumo-signal-service', '--property=ActiveEnterTimestamp'],
                 capture_output=True,
                 text=True,
                 timeout=5

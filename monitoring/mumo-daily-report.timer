@@ -1,11 +1,11 @@
 [Unit]
 Description=Send Daily Report at Midnight UTC
-Requires=smc-daily-report.service
+Requires=mumo-daily-report.service
 
 [Timer]
 OnCalendar=daily
 OnCalendar=*-*-* 00:00:00
-Unit=smc-daily-report.service
+Unit=mumo-daily-report.service
 
 [Install]
 WantedBy=timers.target

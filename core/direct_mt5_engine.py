@@ -70,7 +70,9 @@ class DirectMT5Engine:
                 "status": "PAPER_EXECUTED", 
                 "order_id": int(time.time()),
                 "symbol": mapped_symbol,
-                "direction": signal.get('direction')
+                "direction": signal.get('direction'),
+                "volume": self._extract_volume(signal),
+                "price": signal.get("entry_price"),
             }
 
         if not self.initialized and not self.connect():
@@ -79,11 +81,19 @@ class DirectMT5Engine:
         symbol = mapped_symbol
 
         direction = signal.get('direction', '').upper()
-        volume = float(signal.get('volume', 0.01))
+        if direction not in {"BUY", "SELL"}:
+            return {"status": "FAILED", "reason": "INVALID_DIRECTION"}
+        try:
+            volume = self._extract_volume(signal)
+        except ValueError as exc:
+            return {"status": "FAILED", "reason": str(exc)}
         
         # Prepare Order Request
         order_type = mt5.ORDER_TYPE_BUY if direction == 'BUY' else mt5.ORDER_TYPE_SELL
-        price = mt5.symbol_info_tick(symbol).ask if direction == 'BUY' else mt5.symbol_info_tick(symbol).bid
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            return {"status": "FAILED", "reason": f"TICK_UNAVAILABLE: {symbol}"}
+        price = tick.ask if direction == 'BUY' else tick.bid
         
         sl = float(signal.get('sl', 0.0))
         tp = float(signal.get('tp1', 0.0))
@@ -105,11 +115,15 @@ class DirectMT5Engine:
 
         # 1. Check for errors
         check = mt5.order_check(request)
+        if check is None:
+            return {"status": "FAILED", "reason": "CHECK_FAILED: no broker response"}
         if check.retcode != mt5.TRADE_RETCODE_DONE:
             return {"status": "FAILED", "reason": f"CHECK_FAILED: {check.comment}"}
 
         # 2. Send the order
         result = mt5.order_send(request)
+        if result is None:
+            return {"status": "FAILED", "reason": "ORDER_SEND_FAILED: no broker response"}
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             self.logger.error(f"Trade Execution Failed: {result.comment}")
             return {"status": "FAILED", "reason": result.comment}
@@ -119,8 +133,24 @@ class DirectMT5Engine:
             "status": "LIVE_EXECUTED",
             "order_id": result.order,
             "price": result.price,
+            "volume": volume,
             "timestamp": datetime.now().isoformat()
         }
+
+    def _extract_volume(self, signal: Dict) -> float:
+        raw_volume = (
+            signal.get("volume")
+            or signal.get("lot_size")
+            or signal.get("requested_lot_size")
+            or (signal.get("risk_details") or {}).get("lots")
+            or (signal.get("risk_details") or {}).get("lot_size")
+        )
+        if raw_volume is None:
+            raise ValueError("MISSING_LOT_SIZE")
+        volume = float(raw_volume)
+        if volume <= 0:
+            raise ValueError("INVALID_LOT_SIZE")
+        return round(volume, 2)
 
     def get_candles(self, symbol: str, timeframe: str, count: int = 500) -> Optional[List[Dict]]:
         """

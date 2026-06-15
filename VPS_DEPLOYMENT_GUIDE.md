@@ -1,6 +1,6 @@
 # Windows VPS Deployment Guide
 
-To deploy your Pure Quant SMC Scalp Signals system and begin monetizing via live execution and Telegram subscriptions, follow these steps to migrate the system to a 24/7 Windows Virtual Private Server (VPS).
+To deploy your Pure Quant Mumo Syntax & Capital system and begin monetizing via live execution and Telegram subscriptions, follow these steps to migrate the system to a 24/7 Windows Virtual Private Server (VPS).
 
 > [!IMPORTANT]  
 > **Prerequisites:**

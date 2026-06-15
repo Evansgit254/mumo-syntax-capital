@@ -1,5 +1,5 @@
 //@version=5
-origin_url = "https://github.com/Evansgit254/smc-scalp-signals"
+origin_url = "https://github.com/Evansgit254/mumo-syntax-capital"
 indicator("SMC Scalp Signals [Python Port V27.0]", shorttitle="SMC Scalp [V27]", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
 
 // =====================================================================================================================

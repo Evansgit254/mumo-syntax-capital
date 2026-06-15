@@ -133,7 +133,7 @@ class AlphaEdgeDiscovery:
         report.append(f"Based on IC, the most reliable lead indicator is **{best_alpha}**.")
         report.append(f"The system achieves maximum edge when at least 3 alpha factors are aligned.")
         
-        report_path = "/home/evans/Projects/TradingExpert/smc-scalp-signals/research/alpha_edge_report.md"
+        report_path = "/home/evans/Projects/TradingExpert/mumo-syntax-capital/research/alpha_edge_report.md"
         with open(report_path, "w") as f:
             f.write("\n".join(report))
         print(f"✅ Alpha Edge Report generated at {report_path}")

@@ -119,9 +119,9 @@ def test_stripe_webhook_invalid_json():
 
 def test_stripe_webhook_missing_type():
     with patch('admin_server.get_db_connection'):
-        # Must have 'type' key to avoid KeyError
+        # Valid unsigned events fail closed unless the explicit dev bypass is enabled.
         response = client.post("/api/stripe/webhook", json={"type": "unknown.event"})
-        assert response.status_code == 200 # App returns 200
+        assert response.status_code == 503
         
 def test_market_context_error():
     with patch('admin_server.get_market_context', side_effect=Exception("Fetch failed")):
@@ -155,14 +155,14 @@ def test_get_logs_invalid_service(auth_headers):
 def test_get_logs_retrieval_error(auth_headers):
     with patch('admin_server.subprocess.run') as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="Subprocess error")
-            response = client.get("/api/logs/smc-admin-dashboard")
+            response = client.get("/api/logs/mumo-admin-dashboard")
             assert response.status_code == 200
             content = response.json()['logs']
             assert "Subprocess error" in content or "No logs found" in content
 
 def test_get_logs_exception(auth_headers):
     with patch('admin_server.subprocess.run', side_effect=Exception("Log error")):
-        response = client.get("/api/logs/smc-admin-dashboard")
+        response = client.get("/api/logs/mumo-admin-dashboard")
         assert response.status_code == 200
         assert "Log retrieval failed" in response.json()['logs']
 

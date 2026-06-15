@@ -8,10 +8,10 @@ THRESHOLD_MB = 150  # Restart services if available memory < 150MB
 SLEEP_INTERVAL = 300 # Run every 5 minutes
 
 SERVICES = [
-    "smc-signal-service.service",
-    "smc-interactive-bot.service",
-    "smc-admin-dashboard.service",
-    "smc-signal-tracker.service"
+    "mumo-signal-service.service",
+    "mumo-interactive-bot.service",
+    "mumo-admin-dashboard.service",
+    "mumo-signal-tracker.service"
 ]
 
 def clear_system_caches():
@@ -46,7 +46,7 @@ def check_memory_and_guard():
         print("✅ Memory healthy.")
 
 if __name__ == "__main__":
-    print("🛡️ SMC MEMORY GUARD STARTING (V23.1.3)")
+    print("🛡️ MUMO MEMORY GUARD STARTING (V23.1.3)")
     while True:
         check_memory_and_guard()
         time.sleep(SLEEP_INTERVAL)

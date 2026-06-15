@@ -1553,11 +1553,11 @@ async def get_logs(service: str, lines: int = 100, current_user: User = Depends(
     lines = max(1, min(int(lines), 500))
     # Mapping service IDs to local log files
     log_map = {
-        "smc-admin-dashboard": "admin.log",
-        "smc-signal-service": "signals.log",
-        "smc-alpha-kernel": "signals.log",
-        "smc-interactive-bot": "bot.log",
-        "smc-signal-tracker": "tracker.log"
+        "mumo-admin-dashboard": "admin.log",
+        "mumo-signal-service": "signals.log",
+        "mumo-alpha-kernel": "signals.log",
+        "mumo-interactive-bot": "bot.log",
+        "mumo-signal-tracker": "tracker.log"
     }
     
     if service not in log_map:
@@ -1847,8 +1847,8 @@ def _run_management_command(action: str) -> dict:
 
     if action == "restart":
         commands = [
-            ["sudo", "systemctl", "restart", "smc-signal-service.service"],
-            ["sudo", "systemctl", "restart", "smc-signal-tracker.service"],
+            ["sudo", "systemctl", "restart", "mumo-signal-service.service"],
+            ["sudo", "systemctl", "restart", "mumo-signal-tracker.service"],
         ]
         outputs = []
         for cmd in commands:

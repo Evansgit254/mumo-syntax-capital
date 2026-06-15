@@ -34,7 +34,7 @@ def restart_services():
     logging.warning("⚠️  Governance Failure Detected. Triggering Auto-Heal (start_all.sh)...")
     try:
         # We use a hard reset since we likely have a port squatting or permission issue
-        subprocess.run(["/home/evans/smc-scalp-signals/start_all.sh"], shell=True)
+        subprocess.run(["/home/evans/mumo-syntax-capital/start_all.sh"], shell=True)
     except Exception as e:
         logging.error(f"❌ Auto-Heal Failed: {e}")
 

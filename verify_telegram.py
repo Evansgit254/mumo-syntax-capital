@@ -45,7 +45,7 @@ async def verify():
         except Exception as e:
             if "Conflict" in str(e):
                 print("⚠️ CONFLICT: Your bot is already running on the VM.")
-                print("Please run: 'sudo systemctl stop smc-signal-service' first, then try again.")
+                print("Please run: 'sudo systemctl stop mumo-signal-service' first, then try again.")
                 return
             print(f"⚠️ Polling... ({e})")
             await asyncio.sleep(2)

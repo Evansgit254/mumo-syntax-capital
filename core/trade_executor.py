@@ -93,24 +93,32 @@ class TradeExecutor:
             return {"status": "skipped", "reason": "MT5_AUTO_TRADE=false"}
 
         symbol = signal_data.get("symbol")
+        volume = self._resolve_lot_size(signal_data)
+        if volume is None:
+            res = {"status": "error", "reason": "missing lot size"}
+            self._persist_execution_state(signal_data, res.copy())
+            return res
+        signal_data["volume"] = volume
         
         # 1. Check for live readiness
         if not self.paper_mode:
             errors = await self._live_readiness_errors(symbol)
             if errors:
                 res = {"status": "blocked", "reason": "; ".join(errors)}
-                self._persist_execution_state(signal_data, res)
+                self._persist_execution_state(signal_data, res.copy())
                 return res
 
         # 2. Prevent execution if core data is missing
         if not signal_data.get("entry_price"):
             res = {"status": "error", "reason": "missing entry_price"}
-            self._persist_execution_state(signal_data, res)
+            self._persist_execution_state(signal_data, res.copy())
             return res
 
         # Always use the native engine - Purged MetaAPI checks
         print("🚀 [DIRECT MT5] Dispatching to Native Engine...")
-        return self._direct_engine.execute_trade(signal_data)
+        result = self._direct_engine.execute_trade(signal_data)
+        self._persist_broker_result(signal_data, result)
+        return result
 
     async def get_open_positions(self) -> List[Dict]:
         """Fetch all open positions from MT5."""
@@ -211,10 +219,26 @@ class TradeExecutor:
     def _persist_execution_state(self, signal_data: dict, state: dict):
         try:
             patch = state.pop("score_details_patch", None)
+            if "reason" in state and "execution_error" not in state:
+                state["execution_error"] = state.pop("reason")
+            writable_cols = {
+                "status",
+                "execution_status",
+                "broker_order_id",
+                "broker_position_id",
+                "requested_price",
+                "fill_price",
+                "requested_lot_size",
+                "filled_lot_size",
+                "slippage_pips",
+                "execution_error",
+            }
             set_parts = []
             values = []
             for col, value in state.items():
                 if col == "score_details_patch":
+                    continue
+                if col not in writable_cols:
                     continue
                 set_parts.append(f"{col} = ?")
                 values.append(value)
@@ -231,10 +255,22 @@ class TradeExecutor:
             ])
             with connect_sqlite(config_manager.get("db_signals")) as conn:
                 self._ensure_execution_events(conn)
+                cols = conn.execute("PRAGMA table_info(signals)").fetchall()
+                existing_cols = {row["name"] for row in cols}
+                filtered_parts = []
+                filtered_values = []
+                for assignment, value in zip(set_parts, values[:len(set_parts)]):
+                    col_name = assignment.split("=", 1)[0].strip()
+                    if col_name in existing_cols:
+                        filtered_parts.append(assignment)
+                        filtered_values.append(value)
+                if not filtered_parts:
+                    return
+                filtered_values.extend(values[len(set_parts):])
                 conn.execute(f"""
-                    UPDATE signals SET {", ".join(set_parts)}
+                    UPDATE signals SET {", ".join(filtered_parts)}
                     WHERE id = ? OR signal_uid = ? OR (symbol = ? AND timestamp = ?)
-                """, values)
+                """, filtered_values)
                 conn.execute("""
                     INSERT INTO execution_events (
                         signal_id, signal_uid, symbol, event_type, state_json, created_at
@@ -251,6 +287,22 @@ class TradeExecutor:
                 conn.commit()
         except Exception as e:
             print(f"⚠️  Execution state persist failed: {e}")
+
+    def _persist_broker_result(self, signal_data: dict, result: dict):
+        status = result.get("status", "UNKNOWN")
+        normalized_status = status.upper()
+        state = {
+            "execution_status": status,
+            "status": status if normalized_status in {"PAPER_EXECUTED", "LIVE_EXECUTED"} else "EXECUTION_FAILED",
+            "broker_order_id": result.get("order_id"),
+            "fill_price": result.get("price"),
+            "filled_lot_size": result.get("volume") or signal_data.get("volume"),
+            "requested_lot_size": signal_data.get("volume"),
+            "requested_price": signal_data.get("entry_price"),
+            "execution_error": result.get("reason"),
+            "score_details_patch": {"mt5_execution": result},
+        }
+        self._persist_execution_state(signal_data, state)
 
     def _ensure_execution_events(self, conn):
         from core.db_utils import ensure_base_tables
@@ -274,7 +326,56 @@ class TradeExecutor:
             errors.append("live_trading_approved=false")
         if not symbol:
             errors.append("symbol missing")
+        if settings.require_broker_data_for_live and settings.data_provider != "mt5":
+            errors.append("data_provider must be mt5 for live trading")
+        if not settings.mt5_login or not settings.mt5_password or not settings.mt5_server:
+            errors.append("MT5 Terminal credentials must be configured")
+        if not self._direct_engine.initialized and not self._direct_engine.connect():
+            errors.append("MT5 terminal connection unavailable")
+            return errors
+        spread_error = self._pretrade_spread_error(symbol, settings.max_pretrade_spread_pips)
+        if spread_error:
+            errors.append(spread_error)
         return errors
+
+    def _resolve_lot_size(self, signal_data: dict) -> Optional[float]:
+        raw = (
+            signal_data.get("volume")
+            or signal_data.get("lot_size")
+            or signal_data.get("requested_lot_size")
+            or (signal_data.get("risk_details") or {}).get("lots")
+            or (signal_data.get("risk_details") or {}).get("lot_size")
+        )
+        if raw is None:
+            return None
+        try:
+            volume = round(float(raw), 2)
+        except (TypeError, ValueError):
+            return None
+        return volume if volume > 0 else None
+
+    def _pretrade_spread_error(self, symbol: str, max_spread_pips: float) -> Optional[str]:
+        try:
+            import MetaTrader5 as mt5_lib
+            tick = mt5_lib.symbol_info_tick(self._map_symbol(symbol))
+            if tick is None:
+                return "broker tick unavailable"
+            spread = float(tick.ask) - float(tick.bid)
+            if spread <= 0:
+                return "broker spread invalid"
+            if "JPY" in symbol:
+                spread_pips = spread * 100
+            elif "BTC" in symbol:
+                spread_pips = spread
+            elif "CL" in symbol or "GC" in symbol or "XAU" in symbol:
+                spread_pips = spread * 10
+            else:
+                spread_pips = spread * 10000
+            if spread_pips > max_spread_pips:
+                return f"spread too wide ({spread_pips:.2f} > {max_spread_pips:.2f} pips)"
+        except Exception as exc:
+            return f"pretrade spread check failed: {exc}"
+        return None
 
 # Global singleton
 _executor = None

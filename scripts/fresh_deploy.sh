@@ -1,22 +1,22 @@
 #!/bin/bash
-# fresh_deploy.sh - SMC Scalp Signals Production Deployment Script
+# fresh_deploy.sh - Mumo Syntax & Capital Production Deployment Script
 # V33.0 Fresh Start Migration
 
 set -e
 
 # BASE_DIR should be in the current user's home directory
-BASE_DIR="$HOME/smc-scalp-signals"
-BACKUP_DIR="$HOME/smc-backups/$(date +%Y-%m-%d_%H%M%S)"
-REPO_URL="https://github.com/Evansgit254/smc-scalp-signals.git"
+BASE_DIR="$HOME/mumo-syntax-capital"
+BACKUP_DIR="$HOME/mumo-backups/$(date +%Y-%m-%d_%H%M%S)"
+REPO_URL="https://github.com/Evansgit254/mumo-syntax-capital.git"
 
 echo "🚀 Starting Fresh Production Deployment..."
 
 # 1. Stop existing services
 echo "🛑 Stopping services..."
-systemctl --user stop smc-signal-service.service || true
-systemctl --user stop smc-interactive-bot.service || true
-systemctl --user stop smc-signal-tracker.service || true
-systemctl --user stop smc-admin-dashboard.service || true
+systemctl --user stop mumo-signal-service.service || true
+systemctl --user stop mumo-interactive-bot.service || true
+systemctl --user stop mumo-signal-tracker.service || true
+systemctl --user stop mumo-admin-dashboard.service || true
 
 # 2. Backup old data
 if [ -d "$BASE_DIR" ]; then
@@ -67,7 +67,7 @@ mkdir -p database
 echo "⚙️  Deploying systemd services..."
 mkdir -p ~/.config/systemd/user
 # Refine paths in service files during deployment
-for srv in smc-*.service; do
+for srv in mumo-*.service; do
     local_script=""
     local_desc=""
     if [[ "$srv" == *"signal-service"* ]]; then local_script="signal_service.py"; local_desc="SMC Signal Service"; fi
@@ -100,15 +100,15 @@ EOF
 done
 
 systemctl --user daemon-reload
-systemctl --user enable smc-signal-service.service
-systemctl --user enable smc-interactive-bot.service
-systemctl --user enable smc-admin-dashboard.service
+systemctl --user enable mumo-signal-service.service
+systemctl --user enable mumo-interactive-bot.service
+systemctl --user enable mumo-admin-dashboard.service
 
 # 8. Start & Verify
 echo "🚀 Starting services..."
-systemctl --user restart smc-signal-service.service
-systemctl --user restart smc-interactive-bot.service
-systemctl --user restart smc-admin-dashboard.service
+systemctl --user restart mumo-signal-service.service
+systemctl --user restart mumo-interactive-bot.service
+systemctl --user restart mumo-admin-dashboard.service
 
 echo "✅ Deployment complete!"
-echo "Check logs: journalctl --user -u smc-signal-service -f"
+echo "Check logs: journalctl --user -u mumo-signal-service -f"
