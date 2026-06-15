@@ -431,7 +431,7 @@
 
                         <div style="padding: 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius);">
                             <label class="label-caps" style="font-size: 9px; color: var(--acc-amber); display: block; margin-bottom: 12px;">System Maintenance</label>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                                 <button class="btn" style="font-size: 9px; background: var(--bg-base); border: 1px solid var(--border-color); color: var(--text-primary); transition: background var(--anim-fast);" 
                                         onmouseover="this.style.background='var(--bg-panel)'" 
                                         onmouseout="this.style.background='var(--bg-base)'"
@@ -440,6 +440,10 @@
                                         onmouseover="this.style.background='var(--bg-panel)'" 
                                         onmouseout="this.style.background='var(--bg-base)'"
                                         onclick="runSystemManage('rollback')">ROLLBACK</button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                                <a href="/api/backup/signals" target="_blank" class="btn" style="font-size: 9px; text-align: center; text-decoration: none; background: rgba(0, 212, 255, 0.05); border: 1px solid var(--acc-cyan); color: var(--acc-cyan);"><i class="fas fa-download"></i> SIGNALS.DB</a>
+                                <a href="/api/backup/clients" target="_blank" class="btn" style="font-size: 9px; text-align: center; text-decoration: none; background: rgba(0, 212, 255, 0.05); border: 1px solid var(--acc-cyan); color: var(--acc-cyan);"><i class="fas fa-download"></i> CLIENTS.DB</a>
                             </div>
                             <button id="restart-engine-btn" class="btn" style="width: 100%; font-size: 10px; padding: 10px; background: rgba(0,212,255,0.08); border: 1px solid var(--acc-cyan); color: var(--acc-cyan); font-weight: 600; letter-spacing: 1px; cursor: pointer; transition: all 0.2s ease;" 
                                     onmouseover="this.style.background='rgba(0,212,255,0.2)'; this.style.boxShadow='0 0 12px rgba(0,212,255,0.15)'" 
@@ -551,6 +555,7 @@
                             <th class="mono">ENTRY</th>
                             <th class="mono">BID/ASK</th>
                             <th class="mono text-right">UNREALIZED P/L</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="mt5-positions-body">
@@ -1175,12 +1180,31 @@
                         <td class="mono">${entry}</td>
                         <td class="mono text-tertiary">${current}</td>
                         <td class="mono text-right" style="color: ${profitColor}; font-weight: 700;">$${profit.toFixed(2)}</td>
+                        <td class="text-right">
+                            <i class="fas fa-times" title="Close Position" style="cursor: pointer; color: var(--acc-crimson); font-size: 14px; padding: 4px;" onclick="closePosition('${pos.ticket || pos.id}')"></i>
+                        </td>
                     `;
                     fragment.appendChild(row);
                 });
                 tbody.innerHTML = '';
                 tbody.appendChild(fragment);
             } catch { console.error("MT5 Fetch Failed"); }
+        }
+
+        async function closePosition(id) {
+            if (!confirm(`Are you sure you want to close position ${id}?`)) return;
+            try {
+                const res = await apiFetch(`/api/mt5/close/${id}`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast("POSITION_CLOSED", "success");
+                    loadMt5Positions();
+                } else {
+                    showToast("CLOSE_FAILED: " + (data.detail || "Unknown error"), "error");
+                }
+            } catch (e) {
+                showToast("CLOSE_ERROR", "error");
+            }
         }
 
         // ANALYTICS ENGINE
@@ -1652,10 +1676,68 @@
             setTimeout(() => { t.style.display = 'none'; }, 3500);
         }
 
-        function viewBacktestResults(id) {
+        async function viewBacktestResults(id) {
             showToast("LOADING_RUN_" + id, "success");
-            // Future: Open results modal
+            try {
+                const res = await apiFetch(`/api/backtest/results/${id}`);
+                const data = await res.json();
+                
+                document.getElementById('bt-modal-title').innerText = `Simulation Run #${data.run.id} (${data.run.timestamp})`;
+                document.getElementById('bt-modal-trades').innerText = data.run.total_trades;
+                document.getElementById('bt-modal-wr').innerText = Number(data.run.win_rate).toFixed(1) + '%';
+                const netPips = data.run.net_pips ?? data.run.total_pips ?? 0;
+                document.getElementById('bt-modal-pips').innerText = netPips.toFixed(1);
+                
+                const ctx = document.getElementById('bt-equity-chart').getContext('2d');
+                if (window.btEquityChart) window.btEquityChart.destroy();
+                
+                window.btEquityChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.equity_curve.map(p => p.time.split(' ')[1] || p.time),
+                        datasets: [{
+                            data: data.equity_curve.map(p => p.balance),
+                            borderColor: '#FFBF00',
+                            borderWidth: 2,
+                            fill: true,
+                            backgroundColor: 'rgba(255, 191, 0, 0.05)',
+                            tension: 0.1,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#4A5568', font: { size: 9 }, maxTicksLimit: 10 } },
+                            y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#4A5568', font: { size: 9 } } }
+                        }
+                    }
+                });
+
+                const tbody = document.getElementById('bt-modal-trades-body');
+                tbody.innerHTML = data.trades.map(t => {
+                    const resColor = ['TP1','TP2','TP3'].includes(t.result) ? 'var(--acc-emerald)' : (t.result === 'SL' ? 'var(--acc-crimson)' : 'var(--text-secondary)');
+                    return `
+                        <tr>
+                            <td class="mono" style="font-size: 10px;">${t.timestamp}</td>
+                            <td class="mono font-bold">${t.symbol}</td>
+                            <td><span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-primary);">${t.trade_type}</span></td>
+                            <td><span class="badge" style="border: 1px solid ${resColor}; color: ${resColor};">${t.result}</span></td>
+                            <td class="mono text-right" style="color: ${resColor};">${t.result_pips > 0 ? '+' : ''}${Number(t.result_pips).toFixed(1)}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                document.getElementById('bt-results-modal').style.display = 'flex';
+            } catch (e) {
+                console.error(e);
+                showToast("BACKTEST_RESULTS_FAILED", "error");
+            }
         }
+
+        function closeBtModal() { document.getElementById('bt-results-modal').style.display = 'none'; }
 
         async function deleteClient(id) {
             if (!confirm(`Delete client ${id}?`)) return;
@@ -2003,6 +2085,53 @@
             }
         }
     </script>
+    
+    <!-- BACKTEST RESULTS MODAL -->
+    <div id="bt-results-modal" class="modal-overlay" style="display: none; z-index: 1000; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px);">
+        <div class="modal" style="width: 800px; max-height: 90vh; display: flex; flex-direction: column; background: var(--bg-surface); border: 1px solid var(--acc-amber); box-shadow: 0 0 30px rgba(255,191,0,0.1);">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--border-color); background: rgba(255,191,0,0.05);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <i class="fas fa-flask text-amber"></i>
+                    <h3 class="label-caps" id="bt-modal-title" style="color: var(--acc-amber);">Simulation Results</h3>
+                </div>
+                <button onclick="closeBtModal()" class="btn-micro" style="padding: 8px 12px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="padding: 24px; overflow-y: auto;" class="custom-scrollbar">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px;">
+                    <div class="micro-border" style="padding: 16px; text-align: center;">
+                        <span class="label-caps" style="color: var(--text-tertiary); display: block; margin-bottom: 8px;">Total Trades</span>
+                        <div class="mono" id="bt-modal-trades" style="font-size: 24px; color: var(--text-primary);">0</div>
+                    </div>
+                    <div class="micro-border" style="padding: 16px; text-align: center;">
+                        <span class="label-caps" style="color: var(--text-tertiary); display: block; margin-bottom: 8px;">Win Rate</span>
+                        <div class="mono" id="bt-modal-wr" style="font-size: 24px; color: var(--acc-cyan);">0%</div>
+                    </div>
+                    <div class="micro-border" style="padding: 16px; text-align: center;">
+                        <span class="label-caps" style="color: var(--text-tertiary); display: block; margin-bottom: 8px;">Net Pips</span>
+                        <div class="mono" id="bt-modal-pips" style="font-size: 24px; color: var(--acc-amber);">0</div>
+                    </div>
+                </div>
+                
+                <div style="height: 200px; margin-bottom: 24px;">
+                    <canvas id="bt-equity-chart"></canvas>
+                </div>
+                
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="mono">TIME</th>
+                            <th class="mono">SYMBOL</th>
+                            <th class="mono">STRATEGY</th>
+                            <th class="mono">RESULT</th>
+                            <th class="mono text-right">PIPS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bt-modal-trades-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- 🏛️ FLASH FORENSICS MODAL -->
     <div id="forensicsOverlay" class="hidden">
         <div>
