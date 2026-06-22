@@ -3,17 +3,17 @@
 
 VERSION_MAJOR = 5
 VERSION_MINOR = 3
-VERSION_PATCH = 0
+VERSION_PATCH = 1
 
 # Status can be 'stable', 'beta', 'rc' (Release Candidate)
 VERSION_STATUS = "stable"
 
-RELEASE_NAME = "Live-Ready Mathematical Update 63"
+RELEASE_NAME = "Robust MT5 Integration & Quant Audit"
 RELEASE_NOTES = [
-    "Active strategy scope narrowed to CRT and Advanced Pattern.",
-    "Run 61 & 63 retained as historical CRT baseline evidence.",
-    "Alpha Combiner suppression decoupled from structural mechanics.",
-    "ExecutionGate perfectly isolated against cross-run DB pollution.",
+    "Enhanced MetaTrader 5 connection reliability in Windows VPS environments with multi-strategy discovery.",
+    "Cleaned dependency versions in requirements.txt to prevent setup errors.",
+    "Conducted quantitative audit of backtest database runs confirming CRT H1 mathematical edge.",
+    "Fixed escape character syntax error in Windows VPS startup batch script.",
 ]
 
 def get_version():

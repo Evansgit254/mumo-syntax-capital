@@ -28,18 +28,122 @@ class DirectMT5Engine:
         self.logger = logging.getLogger("DirectMT5")
 
     def connect(self) -> bool:
-        """Initializes connection to the local MT5 terminal."""
+        """
+        Initializes connection to the local MT5 terminal.
+        Uses retry logic with cleanup between attempts to handle
+        stale IPC handles common on Windows VPS/RDP environments.
+        """
         if not MT5_AVAILABLE:
             self.logger.debug("MetaTrader5 package not installed. Run 'pip install MetaTrader5' on Windows.")
             return False
 
-        if not mt5.initialize(login=self.login, password=self.password, server=self.server):
-            self.logger.error(f"MT5 Initialize failed: {mt5.last_error()}")
-            return False
-        
-        self.initialized = True
-        self.logger.info(f"Successfully connected to {self.server} (Account: {self.login})")
-        return True
+        # Detect Windows Admin privileges to diagnose UAC/IPC mismatches
+        is_admin = False
+        try:
+            import ctypes
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            pass
+        self.logger.info(f"Python Process Administrator Status: {is_admin}")
+
+        mt5_path = os.getenv("MT5_PATH")
+        if mt5_path:
+            mt5_path = mt5_path.strip().strip('"').strip("'")
+            if not os.path.exists(mt5_path):
+                self.logger.warning(f"MT5_PATH set but file not found: {mt5_path}")
+                mt5_path = None
+
+        max_retries = 3
+        retry_delay = 5  # seconds between retries
+        timeout_ms = 60000  # 60 second timeout for mt5.initialize
+
+        for attempt in range(1, max_retries + 1):
+            self.logger.info(f"MT5 connection attempt {attempt}/{max_retries}...")
+
+            # Always shutdown first to clear any stale IPC handles
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            
+            if attempt > 1:
+                self.logger.info(f"Waiting {retry_delay}s before retry...")
+                time.sleep(retry_delay)
+
+            # Strategy A: Default discovery (connect to already running terminal)
+            try:
+                self.logger.info("  → Strategy A: Trying default terminal discovery...")
+                if mt5.initialize(timeout=timeout_ms):
+                    self.initialized = True
+                    acct = mt5.account_info()
+                    if acct:
+                        self.logger.info(f"✅ Connected via Strategy A to {acct.server} (Account: {acct.login}, Balance: {acct.balance})")
+                    else:
+                        self.logger.info(f"✅ Connected via Strategy A to MT5 terminal (no account info yet)")
+                    return True
+                else:
+                    self.logger.warning(f"  → Strategy A failed: {mt5.last_error()}")
+            except Exception as e:
+                self.logger.warning(f"  → Strategy A exception: {e}")
+
+            # Strategy B: Open terminal via path (no credentials)
+            if mt5_path:
+                try:
+                    mt5.shutdown()
+                except Exception:
+                    pass
+                
+                try:
+                    self.logger.info(f"  → Strategy B: Trying path discovery ({mt5_path})...")
+                    if mt5.initialize(path=mt5_path, timeout=timeout_ms):
+                        self.initialized = True
+                        acct = mt5.account_info()
+                        if acct:
+                            self.logger.info(f"✅ Connected via Strategy B to {acct.server} (Account: {acct.login}, Balance: {acct.balance})")
+                        else:
+                            self.logger.info(f"✅ Connected via Strategy B to MT5 terminal (no account info yet)")
+                        return True
+                    else:
+                        self.logger.warning(f"  → Strategy B failed: {mt5.last_error()}")
+                except Exception as e:
+                    self.logger.warning(f"  → Strategy B exception: {e}")
+
+            # Strategy C: Try to connect/login with explicit credentials
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+
+            try:
+                self.logger.info(f"  → Strategy C: Trying with credentials (login={self.login}, server={self.server})...")
+                init_args = {
+                    "login": self.login,
+                    "password": self.password,
+                    "server": self.server,
+                    "timeout": timeout_ms,
+                }
+                if mt5_path:
+                    init_args["path"] = mt5_path
+
+                if mt5.initialize(**init_args):
+                    self.initialized = True
+                    acct = mt5.account_info()
+                    if acct:
+                        self.logger.info(f"✅ Connected via Strategy C to {acct.server} (Account: {acct.login}, Balance: {acct.balance})")
+                    else:
+                        self.logger.info(f"✅ Connected via Strategy C to MT5 terminal (no account info yet)")
+                    return True
+                else:
+                    self.logger.warning(f"  → Strategy C failed: {mt5.last_error()}")
+            except Exception as e:
+                self.logger.warning(f"  → Strategy C exception: {e}")
+
+        self.logger.error(f"❌ MT5 connection failed after {max_retries} attempts. "
+                         f"Checklist: (1) Is MT5 open and logged in? "
+                         f"(2) Are both MT5 and this script running as the same user (both Admin or both normal)? "
+                         f"(3) Kill all terminal64.exe in Task Manager and restart MT5 fresh.")
+        return False
+
 
     def get_account_info(self) -> Optional[Dict]:
         """Fetches real-time balance and equity."""
