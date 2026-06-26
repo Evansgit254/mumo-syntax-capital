@@ -106,10 +106,32 @@ The system now operates exclusively via **Direct Native Execution**, completely 
    - `MT5_LOGIN`
    - `MT5_PASSWORD`
    - `MT5_SERVER`
+   - `MT5_PATH` (for example `C:\Program Files\MetaTrader 5\terminal64.exe`)
    - `MT5_PAPER_MODE=false` (Set to `true` for paper testing)
    - `MT5_SYMBOL_SUFFIX=` (Set if your broker uses cent suffixes like `.m`)
 
 This mode offers **institutional-grade execution speed** and eliminates all cloud subscription fees and rate-limiting issues.
+
+### Windows MT5 IPC Requirements
+
+The native MT5 engine requires Python and `terminal64.exe` to run in the same Windows desktop context. On Windows VPS platforms such as AWS EC2:
+
+- Open MT5 manually in the same RDP session before starting the backend.
+- Match privilege levels. If Python is running as Administrator, MT5 must also run as Administrator.
+- Avoid running the backend as a Windows service until MT5 connectivity has been verified interactively.
+- `(-10005, 'IPC timeout')` means Python cannot communicate with the local MT5 process. It is usually a Windows IPC/session issue, not a broker login or AWS networking issue.
+- In paper mode, the dashboard reads paper positions from SQLite and does not need MT5 initialization.
+
+Useful test startup on Windows:
+
+```powershell
+cd C:\Users\Administrator\Desktop\mumo-syntax-capital\mumo-syntax-capital
+.\.venv\Scripts\activate
+$env:MT5_PATH="C:\Program Files\MetaTrader 5\terminal64.exe"
+$env:MT5_CONNECT_TIMEOUT_MS="15000"
+$env:MT5_CONNECT_MAX_RETRIES="1"
+python admin_server.py
+```
 
 ---
 

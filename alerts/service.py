@@ -1,11 +1,13 @@
 """
 Telegram Service for sending trading signals.
 """
+from datetime import datetime
 from typing import Optional
 from telegram import Bot
 from telegram.error import TelegramError
 from config.manager import config_manager
 from core.signal_formatter import SignalFormatter
+from core.db_utils import connect_sqlite
 
 
 class TelegramService:
@@ -154,6 +156,76 @@ TP2 (20% Exit):   {tp2:.5f} ({'+' if direction == 'BUY' else '-'}{tp2_pips:.1f} 
             print(f"❌ Error sending Telegram message: {e}")
             return False
 
+    def _ensure_entitlement_table(self, db_path: str):
+        conn = None
+        try:
+            conn = connect_sqlite(db_path)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS client_signal_entitlements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_chat_id TEXT NOT NULL,
+                    signal_id INTEGER NOT NULL,
+                    signal_uid TEXT,
+                    delivery_status TEXT DEFAULT 'ENTITLED',
+                    delivery_channel TEXT DEFAULT 'telegram',
+                    tier_at_delivery TEXT,
+                    created_at TEXT NOT NULL,
+                    delivered_at TEXT,
+                    UNIQUE(telegram_chat_id, signal_id)
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_client_signal_entitlements_client
+                ON client_signal_entitlements(telegram_chat_id, signal_id)
+            """)
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    def _record_signal_entitlement(
+        self,
+        db_path: str,
+        client: dict,
+        signal_data: dict,
+        delivery_status: str,
+        delivered_at: str = None,
+    ):
+        signal_id = signal_data.get("id")
+        if not signal_id:
+            return
+        self._ensure_entitlement_table(db_path)
+        conn = None
+        try:
+            now = datetime.utcnow().isoformat()
+            conn = connect_sqlite(db_path)
+            conn.execute("""
+                INSERT INTO client_signal_entitlements (
+                    telegram_chat_id, signal_id, signal_uid, delivery_status,
+                    delivery_channel, tier_at_delivery, created_at, delivered_at
+                )
+                VALUES (?, ?, ?, ?, 'telegram', ?, ?, ?)
+                ON CONFLICT(telegram_chat_id, signal_id) DO UPDATE SET
+                    signal_uid = excluded.signal_uid,
+                    delivery_status = excluded.delivery_status,
+                    tier_at_delivery = excluded.tier_at_delivery,
+                    delivered_at = COALESCE(excluded.delivered_at, client_signal_entitlements.delivered_at)
+            """, (
+                str(client["telegram_chat_id"]),
+                int(signal_id),
+                signal_data.get("signal_uid"),
+                delivery_status,
+                client.get("subscription_tier"),
+                now,
+                delivered_at,
+            ))
+            conn.commit()
+        except Exception as e:
+            print(f"⚠️ Failed to record client signal entitlement for {client.get('telegram_chat_id')}: {e}")
+        finally:
+            if conn:
+                conn.close()
+
     async def broadcast_personalized_signal(self, signal_data: dict):
         """
         Broadcasts personalized signals to all active clients.
@@ -167,7 +239,7 @@ TP2 (20% Exit):   {tp2:.5f} ({'+' if direction == 'BUY' else '-'}{tp2_pips:.1f} 
             await self.send_signal(message)
             return
             
-        manager = ClientManager()
+        manager = ClientManager(settings.db_clients)
         clients = manager.get_all_active_clients()
         
         # V11.2 Auto-Register Primary Chat if Database is Empty
@@ -187,6 +259,7 @@ TP2 (20% Exit):   {tp2:.5f} ({'+' if direction == 'BUY' else '-'}{tp2_pips:.1f} 
         
         success_count = 0
         skipped_count = 0
+        entitled_count = 0
         
         for client in clients:
             # V17.1 Monetization Check
@@ -198,10 +271,37 @@ TP2 (20% Exit):   {tp2:.5f} ({'+' if direction == 'BUY' else '-'}{tp2_pips:.1f} 
                 continue
                 
             try:
+                self._record_signal_entitlement(
+                    settings.db_clients,
+                    client,
+                    signal_data,
+                    delivery_status="PENDING",
+                )
+                entitled_count += 1
                 formatted = SignalFormatter.format_personalized_signal(signal_data, client)
                 if await self.send_text(formatted, chat_id=client['telegram_chat_id']):
                     success_count += 1
+                    self._record_signal_entitlement(
+                        settings.db_clients,
+                        client,
+                        signal_data,
+                        delivery_status="SENT",
+                        delivered_at=datetime.utcnow().isoformat(),
+                    )
+                else:
+                    self._record_signal_entitlement(
+                        settings.db_clients,
+                        client,
+                        signal_data,
+                        delivery_status="FAILED",
+                    )
             except Exception as e:
+                self._record_signal_entitlement(
+                    settings.db_clients,
+                    client,
+                    signal_data,
+                    delivery_status="FAILED",
+                )
                 print(f"⚠️ Failed to send signal to {client['telegram_chat_id']}: {e}")
         
-        print(f"📢 Broadcast complete. {success_count} sent, {skipped_count} expired/skipped. Total clients: {len(clients)}")
+        print(f"📢 Broadcast complete. {success_count} sent, {entitled_count} entitled, {skipped_count} expired/skipped. Total clients: {len(clients)}")

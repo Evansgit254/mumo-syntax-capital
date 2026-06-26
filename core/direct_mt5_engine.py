@@ -2,7 +2,7 @@ import os
 import time
 import logging
 from typing import Dict, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Attempt to import MT5 (will only work on Windows)
 try:
@@ -23,6 +23,9 @@ class DirectMT5Engine:
         self.server = server
         self.paper_mode = paper_mode
         self.initialized = False
+        self.last_connect_failure_at: Optional[datetime] = None
+        self.last_connect_error: Optional[str] = None
+        self.failure_backoff_seconds = int(os.getenv("MT5_CONNECT_FAILURE_BACKOFF_SECONDS", "60"))
         
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("DirectMT5")
@@ -36,6 +39,15 @@ class DirectMT5Engine:
         if not MT5_AVAILABLE:
             self.logger.debug("MetaTrader5 package not installed. Run 'pip install MetaTrader5' on Windows.")
             return False
+
+        if self.last_connect_failure_at:
+            retry_at = self.last_connect_failure_at + timedelta(seconds=self.failure_backoff_seconds)
+            if datetime.utcnow() < retry_at:
+                self.logger.warning(
+                    "MT5 connection skipped; previous failure is cooling down until %s",
+                    retry_at.isoformat(timespec="seconds"),
+                )
+                return False
 
         # Detect Windows Admin privileges to diagnose UAC/IPC mismatches
         is_admin = False
@@ -53,9 +65,9 @@ class DirectMT5Engine:
                 self.logger.warning(f"MT5_PATH set but file not found: {mt5_path}")
                 mt5_path = None
 
-        max_retries = 3
-        retry_delay = 5  # seconds between retries
-        timeout_ms = 60000  # 60 second timeout for mt5.initialize
+        max_retries = int(os.getenv("MT5_CONNECT_MAX_RETRIES", "3"))
+        retry_delay = int(os.getenv("MT5_CONNECT_RETRY_DELAY_SECONDS", "5"))
+        timeout_ms = int(os.getenv("MT5_CONNECT_TIMEOUT_MS", "60000"))
 
         for attempt in range(1, max_retries + 1):
             self.logger.info(f"MT5 connection attempt {attempt}/{max_retries}...")
@@ -82,8 +94,10 @@ class DirectMT5Engine:
                         self.logger.info(f"✅ Connected via Strategy A to MT5 terminal (no account info yet)")
                     return True
                 else:
-                    self.logger.warning(f"  → Strategy A failed: {mt5.last_error()}")
+                    self.last_connect_error = str(mt5.last_error())
+                    self.logger.warning(f"  → Strategy A failed: {self.last_connect_error}")
             except Exception as e:
+                self.last_connect_error = str(e)
                 self.logger.warning(f"  → Strategy A exception: {e}")
 
             # Strategy B: Open terminal via path (no credentials)
@@ -104,8 +118,10 @@ class DirectMT5Engine:
                             self.logger.info(f"✅ Connected via Strategy B to MT5 terminal (no account info yet)")
                         return True
                     else:
-                        self.logger.warning(f"  → Strategy B failed: {mt5.last_error()}")
+                        self.last_connect_error = str(mt5.last_error())
+                        self.logger.warning(f"  → Strategy B failed: {self.last_connect_error}")
                 except Exception as e:
+                    self.last_connect_error = str(e)
                     self.logger.warning(f"  → Strategy B exception: {e}")
 
             # Strategy C: Try to connect/login with explicit credentials
@@ -134,10 +150,13 @@ class DirectMT5Engine:
                         self.logger.info(f"✅ Connected via Strategy C to MT5 terminal (no account info yet)")
                     return True
                 else:
-                    self.logger.warning(f"  → Strategy C failed: {mt5.last_error()}")
+                    self.last_connect_error = str(mt5.last_error())
+                    self.logger.warning(f"  → Strategy C failed: {self.last_connect_error}")
             except Exception as e:
+                self.last_connect_error = str(e)
                 self.logger.warning(f"  → Strategy C exception: {e}")
 
+        self.last_connect_failure_at = datetime.utcnow()
         self.logger.error(f"❌ MT5 connection failed after {max_retries} attempts. "
                          f"Checklist: (1) Is MT5 open and logged in? "
                          f"(2) Are both MT5 and this script running as the same user (both Admin or both normal)? "

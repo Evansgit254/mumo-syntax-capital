@@ -125,3 +125,51 @@ async def test_live_execution_requires_approval_and_terminal_creds(temp_signals_
 
     assert result["status"] == "blocked"
     assert "live_trading_approved=false" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_paper_positions_do_not_connect_to_mt5(temp_signals_db):
+    config_manager.set_runtime_override("mt5_paper_mode", True)
+    config_manager.set_runtime_override("mt5_auto_trade", False)
+
+    with sqlite3.connect(temp_signals_db) as conn:
+        conn.execute("""
+            INSERT INTO signals (
+                id, signal_uid, symbol, direction, entry_price, sl, tp1,
+                timestamp, execution_status, status, filled_lot_size
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            99,
+            "paper-99",
+            "XAUUSD",
+            "BUY",
+            2330.5,
+            2320.0,
+            2340.0,
+            "2026-06-25T10:00:00",
+            "PAPER_EXECUTED",
+            "PAPER_EXECUTED",
+            0.1,
+        ))
+        conn.commit()
+
+    executor = TradeExecutor()
+    with patch.object(executor._direct_engine, "connect", side_effect=AssertionError("MT5 should not be touched")):
+        positions = await executor.get_open_positions()
+
+    assert positions == [{
+        "id": 99,
+        "ticket": 99,
+        "signal_uid": "paper-99",
+        "symbol": "XAUUSD",
+        "direction": "BUY",
+        "lot_size": 0.1,
+        "open_price": 2330.5,
+        "current_price": 2330.5,
+        "profit": 0.0,
+        "sl": 2320.0,
+        "tp": 2340.0,
+        "open_time": "2026-06-25T10:00:00",
+        "mode": "PAPER",
+    }]

@@ -24,7 +24,7 @@ from core.filters.macro_filter import MacroFilter
 from config.config import DXY_SYMBOL, TNX_SYMBOL, SYMBOLS, DB_CLIENTS, DB_SIGNALS
 from config.manager import config_manager
 from core.client_manager import ClientManager
-from core.secure_config import protect_config_value, reveal_config_value, redact_config_value, encryption_available
+from core.secure_config import REDACTED, protect_config_value, reveal_config_value, redact_config_value, encryption_available
 from core.db_utils import connect_sqlite, ensure_base_tables, write_audit_event
 
 # Stripe Configuration
@@ -43,6 +43,12 @@ market_context_cache = {
     "data": None,
     "last_update": 0,
     "ttl": 900 # 15 minutes
+}
+
+mt5_status_cache = {
+    "data": None,
+    "last_update": 0.0,
+    "ttl": int(os.getenv("MT5_STATUS_CACHE_SECONDS", "30")),
 }
 
 app = FastAPI(title="Trading Expert Admin Dashboard")
@@ -336,6 +342,9 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     print("⚠️ WARNING: JWT_SECRET not set. Using ephemeral secret (sessions will reset on restart).")
     JWT_SECRET = secrets.token_hex(32)
+elif len(JWT_SECRET.encode("utf-8")) < 32:
+    print("⚠️ WARNING: JWT_SECRET is shorter than 32 bytes. Deriving a SHA-256 runtime signing key.")
+    JWT_SECRET = hashlib.sha256(JWT_SECRET.encode("utf-8")).hexdigest()
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
@@ -349,6 +358,14 @@ class AuthToken(BaseModel):
 class User(BaseModel):
     username: str
     role: str = "admin"
+
+
+CLIENT_PREFERENCE_KEYS = {
+    "telegram_enabled",
+    "email_enabled",
+    "timezone",
+    "risk_reminder_acknowledged",
+}
 
 def verify_password(plain_password, stored_password):
     try:
@@ -429,14 +446,375 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+
+def ensure_client_portal_tables() -> None:
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS client_preferences (
+                telegram_chat_id TEXT PRIMARY KEY,
+                preferences_json TEXT DEFAULT '{}',
+                updated_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS client_signal_entitlements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_chat_id TEXT NOT NULL,
+                signal_id INTEGER NOT NULL,
+                signal_uid TEXT,
+                delivery_status TEXT DEFAULT 'ENTITLED',
+                delivery_channel TEXT DEFAULT 'telegram',
+                tier_at_delivery TEXT,
+                created_at TEXT NOT NULL,
+                delivered_at TEXT,
+                UNIQUE(telegram_chat_id, signal_id)
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_client_signal_entitlements_client
+            ON client_signal_entitlements(telegram_chat_id, signal_id)
+        """)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+ensure_client_portal_tables()
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    raw = str(value)
+    for parser in (
+        datetime.fromisoformat,
+        lambda item: datetime.strptime(item, "%Y-%m-%d %H:%M:%S.%f"),
+        lambda item: datetime.strptime(item, "%Y-%m-%d %H:%M:%S"),
+        lambda item: datetime.strptime(item, "%Y-%m-%d"),
+    ):
+        try:
+            return parser(raw)
+        except ValueError:
+            continue
+    return None
+
+
+def _subscription_state(client: sqlite3.Row) -> dict:
+    expiry = _parse_datetime(client["subscription_expiry"] if "subscription_expiry" in client.keys() else None)
+    now = datetime.utcnow()
+    subscription_active = bool(expiry and expiry > now)
+    dashboard_access = bool(client["dashboard_access"]) if "dashboard_access" in client.keys() else False
+    signals_active = bool(client["is_active"]) if "is_active" in client.keys() else False
+    entitled = subscription_active and dashboard_access and signals_active
+    if not dashboard_access:
+        state = "dashboard_disabled"
+    elif not signals_active:
+        state = "signals_paused"
+    elif subscription_active:
+        state = "active"
+    else:
+        state = "expired"
+    return {
+        "state": state,
+        "entitled": entitled,
+        "tier": client["subscription_tier"] if "subscription_tier" in client.keys() else "BASIC",
+        "expires_at": expiry.isoformat() if expiry else None,
+        "dashboard_access": dashboard_access,
+        "telegram_delivery": signals_active,
+        "message": _subscription_message(state),
+    }
+
+
+def _subscription_message(state: str) -> str:
+    return {
+        "active": "Your subscription is active.",
+        "expired": "Your subscription is expired or not yet active. Contact support to renew access.",
+        "dashboard_disabled": "Portal access is not enabled for this account. Contact support.",
+        "signals_paused": "Signal delivery is paused for this account. Contact support if this is unexpected.",
+    }.get(state, "Subscription status is unavailable. Contact support.")
+
+
+def _require_client_user(current_user: User) -> None:
+    if current_user.role != "client":
+        raise HTTPException(status_code=403, detail="Client portal access requires a client account")
+
+
+def _get_client_context(current_user: User) -> tuple[sqlite3.Row, dict]:
+    _require_client_user(current_user)
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        client = conn.execute(
+            "SELECT * FROM clients WHERE telegram_chat_id = ?",
+            (current_user.username,),
+        ).fetchone()
+        if not client:
+            raise HTTPException(status_code=404, detail="Client account not found")
+        return client, _subscription_state(client)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _client_signal_payload(row: sqlite3.Row) -> dict:
+    take_profits = [
+        value for value in (row["tp1"], row["tp2"])
+        if value is not None and float(value or 0) != 0.0
+    ]
+    outcome = row["outcome"] if "outcome" in row.keys() else None
+    result = row["result"] if "result" in row.keys() else None
+    raw_status = row["status"] if "status" in row.keys() else None
+    return {
+        "id": row["id"],
+        "symbol": row["symbol"],
+        "direction": row["direction"],
+        "entry": row["entry_price"],
+        "stop_loss": row["sl"],
+        "take_profits": take_profits,
+        "timeframe": row["timeframe"],
+        "confidence": row["confidence"],
+        "status": outcome or result or raw_status or "OPEN",
+        "created_at": row["timestamp"],
+        "closed_at": row["closed_at"] if "closed_at" in row.keys() else None,
+        "reasoning": row["reasoning"] or "Signal generated from the current market setup.",
+        "risk_reminder": "Trading involves risk. Use position sizing that matches your account plan.",
+    }
+
+
+def _require_entitled_client(subscription: dict) -> None:
+    if not subscription["entitled"]:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "subscription_required",
+                "subscription": subscription,
+            },
+        )
+
+
+def _entitled_signal_ids(current_user: User, limit: int = 50) -> list[int]:
+    ensure_client_portal_tables()
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        rows = conn.execute("""
+            SELECT signal_id
+            FROM client_signal_entitlements
+            WHERE telegram_chat_id = ?
+            ORDER BY created_at DESC, signal_id DESC
+            LIMIT ?
+        """, (current_user.username, limit)).fetchall()
+        return [int(row["signal_id"]) for row in rows]
+    finally:
+        if conn:
+            conn.close()
+
+
+def _client_has_signal_entitlement(current_user: User, signal_id: int) -> bool:
+    ensure_client_portal_tables()
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        row = conn.execute("""
+            SELECT 1
+            FROM client_signal_entitlements
+            WHERE telegram_chat_id = ? AND signal_id = ?
+        """, (current_user.username, signal_id)).fetchone()
+        return row is not None
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/client/me")
+async def get_client_me(current_user: User = Depends(get_current_user)):
+    client, subscription = _get_client_context(current_user)
+    return {
+        "client_id": client["client_id"],
+        "telegram_chat_id": client["telegram_chat_id"],
+        "subscription": subscription,
+        "support": {
+            "channel": "support",
+            "message": "Contact support for billing, access, or signal delivery issues.",
+        },
+    }
+
+
+@app.get("/api/client/subscription")
+async def get_client_subscription(current_user: User = Depends(get_current_user)):
+    _, subscription = _get_client_context(current_user)
+    return subscription
+
+
+@app.get("/api/client/signals")
+async def get_client_signals(current_user: User = Depends(get_current_user)):
+    _, subscription = _get_client_context(current_user)
+    if not subscription["entitled"]:
+        return {"subscription": subscription, "signals": []}
+    signal_ids = _entitled_signal_ids(current_user)
+    if not signal_ids:
+        return {"subscription": subscription, "signals": []}
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        placeholders = ",".join("?" for _ in signal_ids)
+        rows = conn.execute("""
+            SELECT id, timestamp, symbol, direction, entry_price, sl, tp1, tp2,
+                   reasoning, timeframe, confidence, status, result, outcome, closed_at
+            FROM signals
+            WHERE id IN ({})
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 50
+        """.format(placeholders), signal_ids).fetchall()
+        return {
+            "subscription": subscription,
+            "signals": [_client_signal_payload(row) for row in rows],
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/client/signals/{signal_id}")
+async def get_client_signal_detail(signal_id: int, current_user: User = Depends(get_current_user)):
+    _, subscription = _get_client_context(current_user)
+    _require_entitled_client(subscription)
+    if not _client_has_signal_entitlement(current_user, signal_id):
+        raise HTTPException(status_code=404, detail="Signal not found")
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        row = conn.execute("""
+            SELECT id, timestamp, symbol, direction, entry_price, sl, tp1, tp2,
+                   reasoning, timeframe, confidence, status, result, outcome, closed_at
+            FROM signals
+            WHERE id = ?
+        """, (signal_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Signal not found")
+        return _client_signal_payload(row)
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/client/performance")
+async def get_client_performance(current_user: User = Depends(get_current_user)):
+    _, subscription = _get_client_context(current_user)
+    if not subscription["entitled"]:
+        return {"subscription": subscription, "summary": None, "recent_outcomes": []}
+    signal_ids = _entitled_signal_ids(current_user, limit=100)
+    if not signal_ids:
+        return {
+            "subscription": subscription,
+            "summary": {
+                "closed_signals": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": None,
+                "total_pips": 0.0,
+                "source": "client_signal_feed",
+            },
+            "recent_outcomes": [],
+        }
+    conn = None
+    try:
+        conn = get_db_connection(DB_SIGNALS)
+        placeholders = ",".join("?" for _ in signal_ids)
+        rows = conn.execute("""
+            SELECT id, timestamp, symbol, direction, status, result, outcome, result_pips
+            FROM signals
+            WHERE id IN ({})
+              AND COALESCE(outcome, result, status, '') != ''
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 100
+        """.format(placeholders), signal_ids).fetchall()
+        wins = 0
+        losses = 0
+        closed = 0
+        total_pips = 0.0
+        recent = []
+        for row in rows:
+            label = (row["outcome"] or row["result"] or row["status"] or "").upper()
+            if any(token in label for token in ("TP", "WIN", "PROFIT")):
+                wins += 1
+                closed += 1
+            elif any(token in label for token in ("SL", "LOSS")):
+                losses += 1
+                closed += 1
+            if row["result_pips"] is not None:
+                total_pips += float(row["result_pips"])
+            recent.append({
+                "id": row["id"],
+                "symbol": row["symbol"],
+                "direction": row["direction"],
+                "status": row["outcome"] or row["result"] or row["status"],
+                "result_pips": row["result_pips"],
+                "created_at": row["timestamp"],
+            })
+        win_rate = round((wins / closed) * 100, 2) if closed else None
+        return {
+            "subscription": subscription,
+            "summary": {
+                "closed_signals": closed,
+                "wins": wins,
+                "losses": losses,
+                "win_rate": win_rate,
+                "total_pips": round(total_pips, 2),
+                "source": "client_signal_feed",
+            },
+            "recent_outcomes": recent[:20],
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.post("/api/client/preferences")
+async def update_client_preferences(preferences: dict, current_user: User = Depends(get_current_user)):
+    _get_client_context(current_user)
+    unknown_keys = set(preferences.keys()) - CLIENT_PREFERENCE_KEYS
+    if unknown_keys:
+        raise HTTPException(status_code=400, detail=f"Unsupported preference keys: {', '.join(sorted(unknown_keys))}")
+    ensure_client_portal_tables()
+    conn = None
+    try:
+        conn = get_db_connection(DB_CLIENTS)
+        existing = conn.execute(
+            "SELECT preferences_json FROM client_preferences WHERE telegram_chat_id = ?",
+            (current_user.username,),
+        ).fetchone()
+        merged = {}
+        if existing and existing["preferences_json"]:
+            try:
+                merged = json.loads(existing["preferences_json"])
+            except json.JSONDecodeError:
+                merged = {}
+        merged.update(preferences)
+        conn.execute("""
+            INSERT INTO client_preferences (telegram_chat_id, preferences_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(telegram_chat_id) DO UPDATE SET
+                preferences_json = excluded.preferences_json,
+                updated_at = excluded.updated_at
+        """, (current_user.username, json.dumps(merged), datetime.utcnow().isoformat()))
+        conn.commit()
+        return {"status": "success", "preferences": merged}
+    finally:
+        if conn:
+            conn.close()
+
 class ConfigUpdate(BaseModel):
     key: str
     value: str
 
 class MT5Config(BaseModel):
-    login: int
-    password: str
-    server: str
+    login: Optional[int] = None
+    password: Optional[str] = None
+    server: Optional[str] = None
     paperMode: bool
 
 CONFIG_SCHEMA = {
@@ -689,22 +1067,37 @@ async def update_mt5_config(config: MT5Config, current_user: User = Depends(get_
     require_role(current_user, "risk_manager")
     conn = None
     try:
+        settings = config_manager.refresh()
+        effective_login = settings.mt5_login if config.login is None else config.login
+        effective_password = (
+            settings.mt5_password
+            if config.password in (None, "", REDACTED)
+            else config.password
+        )
+        effective_server = (
+            settings.mt5_server
+            if config.server in (None, "", REDACTED)
+            else config.server
+        )
         proposed = {
-            "mt5_login": str(config.login),
-            "mt5_password": config.password,
-            "mt5_server": config.server,
+            "mt5_login": str(effective_login or 0),
+            "mt5_password": effective_password,
+            "mt5_server": effective_server,
             "mt5_paper_mode": "true" if config.paperMode else "false",
         }
         live_errors = _live_enablement_errors(proposed)
         if not config.paperMode and live_errors:
             raise HTTPException(status_code=400, detail="Live enablement blocked: " + "; ".join(live_errors))
+        if not effective_login or not effective_password or not effective_server:
+            raise HTTPException(status_code=400, detail="MT5 login, password, and server are required")
         conn = get_db_connection(DB_CLIENTS)
         updates = [
-            ("mt5_login", str(config.login), "int"),
-            ("mt5_password", protect_config_value("mt5_password", config.password), "str"),
-            ("mt5_server", config.server, "str"),
+            ("mt5_login", protect_config_value("mt5_login", str(effective_login)), "int"),
+            ("mt5_server", protect_config_value("mt5_server", effective_server), "str"),
             ("mt5_paper_mode", "true" if config.paperMode else "false", "bool")
         ]
+        if config.password not in (None, "", REDACTED):
+            updates.append(("mt5_password", protect_config_value("mt5_password", config.password), "str"))
         for key, value, cfg_type in updates:
             old = conn.execute("SELECT value FROM system_config WHERE key = ?", (key,)).fetchone()
             conn.execute("""
@@ -783,23 +1176,62 @@ async def toggle_strategy(strategy_id: str, current_user: User = Depends(get_cur
 async def get_mt5_status(current_user: User = Depends(get_current_user)):
     """Returns Native MT5 connection status"""
     try:
-        settings = config_manager.refresh()
-        status = "DISCONNECTED"
-        account = "NATIVE_MT5"
-        
-        # Simple check: do we have login/pass?
-        has_creds = bool(settings.mt5_login) and bool(settings.mt5_password)
-        status = "READY" if has_creds else "MISSING_CREDS"
+        now = time.time()
+        cached = mt5_status_cache.get("data")
+        if cached and now - mt5_status_cache.get("last_update", 0.0) < mt5_status_cache["ttl"]:
+            return {**cached, "cached": True}
 
-        return {
+        settings = config_manager.refresh()
+        has_creds = bool(settings.mt5_login) and bool(settings.mt5_password) and bool(settings.mt5_server)
+        terminal_connected = False
+        account_label = "Not Configured"
+        status = "MISSING_CREDS"
+
+        if has_creds:
+            status = "DISCONNECTED"
+            account_label = f"Account: {settings.mt5_login}"
+            try:
+                from core import direct_mt5_engine
+                if not direct_mt5_engine.MT5_AVAILABLE:
+                    status = "MT5_PACKAGE_MISSING"
+                else:
+                    mt5 = direct_mt5_engine.mt5
+                    terminal_connected = bool(mt5.initialize(timeout=5000))
+                    if terminal_connected:
+                        account_info = mt5.account_info()
+                        if account_info:
+                            account_label = f"Account: {account_info.login}"
+                        status = "READY"
+                    else:
+                        status = "TERMINAL_UNAVAILABLE"
+            except Exception as exc:
+                status = "ERROR"
+                account_label = str(exc)
+
+        payload = {
             "status": status,
             "mode": "NATIVE_MT5",
-            "account": f"Account: {settings.mt5_login}" if settings.mt5_login else "Not Configured",
+            "account": account_label,
             "credentials_set": has_creds,
-            "symbol_suffix": settings.mt5_symbol_suffix
+            "terminal_connected": terminal_connected,
+            "symbol_suffix": settings.mt5_symbol_suffix,
+            "cached": False,
+            "checked_at": datetime.utcnow().isoformat(),
         }
+        mt5_status_cache["data"] = payload
+        mt5_status_cache["last_update"] = now
+        return payload
     except Exception as e:
-        return {"status": "ERROR", "mode": "NATIVE_MT5", "detail": str(e)}
+        payload = {
+            "status": "ERROR",
+            "mode": "NATIVE_MT5",
+            "detail": str(e),
+            "cached": False,
+            "checked_at": datetime.utcnow().isoformat(),
+        }
+        mt5_status_cache["data"] = payload
+        mt5_status_cache["last_update"] = time.time()
+        return payload
 
 # ── MT5 Position Management API ───────────────────────────────────────────────
 @app.get("/api/mt5/positions")
@@ -841,6 +1273,7 @@ def get_db_connection(db_path):
 
 @app.get("/api/clients")
 async def get_clients(current_user: User = Depends(get_current_user)):
+    require_role(current_user, "risk_manager", "operator")
     conn = None
     try:
         conn = get_db_connection(DB_CLIENTS)
@@ -853,6 +1286,15 @@ async def get_clients(current_user: User = Depends(get_current_user)):
 @app.post("/api/clients/{chat_id}")
 async def update_client(chat_id: str, update: ClientUpdate, current_user: User = Depends(get_current_user)):
     require_role(current_user, "risk_manager", "operator")
+    sensitive_fields = [
+        update.account_balance,
+        update.risk_percent,
+        update.subscription_days,
+        update.tier,
+        update.dashboard_access,
+    ]
+    if any(value is not None for value in sensitive_fields):
+        require_role(current_user, "risk_manager")
     conn = None
     try:
         conn = get_db_connection(DB_CLIENTS)
@@ -923,7 +1365,7 @@ async def update_client(chat_id: str, update: ClientUpdate, current_user: User =
 
 @app.delete("/api/clients/{chat_id}/delete")
 async def delete_client(chat_id: str, current_user: User = Depends(get_current_user)):
-    require_role(current_user, "admin", "operator")
+    require_role(current_user, "admin")
     conn = None
     try:
         conn = get_db_connection(DB_CLIENTS)
@@ -1009,7 +1451,7 @@ async def toggle_dashboard(chat_id: str, current_user: User = Depends(get_curren
 @app.post("/api/clients/{chat_id}/extend")
 async def quick_extend(chat_id: str, days: int = 30, current_user: User = Depends(get_current_user)):
     """Quick extend subscription by specified days (default 30)"""
-    require_role(current_user, "risk_manager", "operator")
+    require_role(current_user, "risk_manager")
     conn = None
     try:
         conn = get_db_connection(DB_CLIENTS)

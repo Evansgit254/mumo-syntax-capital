@@ -123,6 +123,9 @@ class TradeExecutor:
     async def get_open_positions(self) -> List[Dict]:
         """Fetch all open positions from MT5."""
         self._load_runtime_config()
+
+        if self.paper_mode:
+            return self._get_paper_positions()
         
         # Native fetch logic only
         import MetaTrader5 as mt5_lib
@@ -147,6 +150,52 @@ class TradeExecutor:
                 "open_time": p.time
             } for p in positions
         ]
+
+    def _get_paper_positions(self) -> List[Dict]:
+        """Return open paper executions from the signals ledger without touching MT5."""
+        try:
+            conn = connect_sqlite(config_manager.get("db_signals"))
+            cols = conn.execute("PRAGMA table_info(signals)").fetchall()
+            existing_cols = {row["name"] for row in cols}
+            closed_checks = []
+            if "outcome" in existing_cols:
+                closed_checks.append("COALESCE(outcome, '') NOT IN ('TP_HIT', 'SL_HIT', 'CLOSED', 'WIN', 'LOSS')")
+            if "result" in existing_cols:
+                closed_checks.append("COALESCE(result, '') NOT IN ('TP_HIT', 'SL_HIT', 'CLOSED', 'WIN', 'LOSS')")
+            closed_clause = " AND ".join(closed_checks) or "1=1"
+            rows = conn.execute(f"""
+                SELECT id, signal_uid, symbol, direction, requested_lot_size,
+                       filled_lot_size, entry_price, fill_price, sl, tp1,
+                       timestamp, execution_status, status
+                FROM signals
+                WHERE COALESCE(execution_status, '') = 'PAPER_EXECUTED'
+                  AND {closed_clause}
+                ORDER BY timestamp DESC
+                LIMIT 100
+            """).fetchall()
+            conn.close()
+            positions = []
+            for row in rows:
+                entry = row["fill_price"] or row["entry_price"] or 0.0
+                positions.append({
+                    "id": row["id"],
+                    "ticket": row["id"],
+                    "signal_uid": row["signal_uid"],
+                    "symbol": row["symbol"],
+                    "direction": row["direction"],
+                    "lot_size": float(row["filled_lot_size"] or row["requested_lot_size"] or 0.0),
+                    "open_price": float(entry),
+                    "current_price": float(entry),
+                    "profit": 0.0,
+                    "sl": float(row["sl"] or 0.0),
+                    "tp": float(row["tp1"] or 0.0),
+                    "open_time": row["timestamp"],
+                    "mode": "PAPER",
+                })
+            return positions
+        except Exception as e:
+            print(f"⚠️  Paper positions fetch failed: {e}")
+            return []
 
     async def close_trade(self, position_id: str) -> dict:
         """Close an open position."""

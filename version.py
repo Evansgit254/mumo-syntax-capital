@@ -1,19 +1,19 @@
 # Pure Quant Research Terminal Versioning Central
-# Updated: 2026-05-29
+# Updated: 2026-06-26
 
 VERSION_MAJOR = 5
-VERSION_MINOR = 3
-VERSION_PATCH = 1
+VERSION_MINOR = 4
+VERSION_PATCH = 0
 
 # Status can be 'stable', 'beta', 'rc' (Release Candidate)
 VERSION_STATUS = "stable"
 
-RELEASE_NAME = "Robust MT5 Integration & Quant Audit"
+RELEASE_NAME = "Client Portal API & Infrastructure"
 RELEASE_NOTES = [
-    "Enhanced MetaTrader 5 connection reliability in Windows VPS environments with multi-strategy discovery.",
-    "Cleaned dependency versions in requirements.txt to prevent setup errors.",
-    "Conducted quantitative audit of backtest database runs confirming CRT H1 mathematical edge.",
-    "Fixed escape character syntax error in Windows VPS startup batch script.",
+    "Introduced Client Portal Product Plan and core API foundation.",
+    "Added client preferences and signal entitlement database schemas.",
+    "Enhanced alert services and trade execution reliability.",
+    "Expanded test coverage for server configuration and client APIs.",
 ]
 
 def get_version():

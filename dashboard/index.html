@@ -854,17 +854,17 @@
             const server = document.getElementById('meta-server').value;
             const paperMode = document.getElementById('meta-paper-mode').checked;
             const suffix = document.getElementById('meta-symbol-suffix').value.trim();
-            
-            if (!login || !pass || !server) {
-                showToast("LOGIN_PASS_SERVER_REQUIRED", true);
-                return;
-            }
 
             try {
                 const res = await apiFetch('/api/mt5/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ login: parseInt(login), password: pass, server: server, paperMode })
+                    body: JSON.stringify({
+                        login: login ? parseInt(login) : null,
+                        password: pass,
+                        server: server || null,
+                        paperMode
+                    })
                 });
                 if (!res.ok) {
                     let detail = "SAVE_FAILED";
@@ -926,9 +926,9 @@
                 setChecked('cfg-require-broker-data', cfg.require_broker_data_for_live !== false);
                 setChecked('cfg-mt5-auto-trade', cfg.mt5_auto_trade);
                 setChecked('meta-paper-mode', cfg.mt5_paper_mode !== false);
-                setValue('meta-login', cfg.mt5_login);
-                setValue('meta-password', cfg.mt5_password);
-                setValue('meta-server', cfg.mt5_server);
+                setValue('meta-login', cfg.mt5_login === '********' ? '' : cfg.mt5_login);
+                setValue('meta-password', '');
+                setValue('meta-server', cfg.mt5_server === '********' ? '' : cfg.mt5_server);
                 setValue('meta-symbol-suffix', cfg.mt5_symbol_suffix || '');
             } catch (e) {
                 console.error("Failed to load editable config", e);

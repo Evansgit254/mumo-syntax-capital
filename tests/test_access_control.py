@@ -13,6 +13,8 @@ from admin_server import (
     ConfigUpdate,
     User,
     close_mt5_position,
+    delete_client,
+    get_clients,
     update_config,
     quick_extend,
     toggle_dashboard,
@@ -182,6 +184,44 @@ async def test_live_trading_config_rejects_operator():
         )
 
     assert exc.value.status_code == 403
+
+@pytest.mark.asyncio
+async def test_client_list_rejects_viewer():
+    viewer = User(username="viewer", role="viewer")
+
+    with pytest.raises(HTTPException) as exc:
+        await get_clients(current_user=viewer)
+
+    assert exc.value.status_code == 403
+
+@pytest.mark.asyncio
+async def test_operator_cannot_mutate_sensitive_client_fields():
+    operator = User(username="operator", role="operator")
+
+    restricted_updates = [
+        ClientUpdate(account_balance=1200),
+        ClientUpdate(risk_percent=3.0),
+        ClientUpdate(subscription_days=30),
+        ClientUpdate(tier="GOLD"),
+        ClientUpdate(dashboard_access=True),
+    ]
+
+    for update in restricted_updates:
+        with pytest.raises(HTTPException) as exc:
+            await update_client("TEST_123", update, current_user=operator)
+        assert exc.value.status_code == 403
+
+@pytest.mark.asyncio
+async def test_operator_cannot_delete_or_extend_client():
+    operator = User(username="operator", role="operator")
+
+    for call in (
+        lambda: delete_client("TEST_123", current_user=operator),
+        lambda: quick_extend("TEST_123", days=30, current_user=operator),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await call()
+        assert exc.value.status_code == 403
 
 if __name__ == "__main__":
     test_toggle_signals()

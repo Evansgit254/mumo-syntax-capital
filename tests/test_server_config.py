@@ -9,7 +9,7 @@ import shutil
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from admin_server import app
+from admin_server import MT5Config, User, app, update_mt5_config
 from signal_service import SignalService
 from config.manager import config_manager
 
@@ -125,6 +125,39 @@ class TestServerConfig(unittest.TestCase):
         self.assertIsNotNone(risk)
         self.assertEqual(float(risk[0]), 2.0)
         print("\n✅ Verified: Defaults backfilled successfully")
+
+    def test_redacted_mt5_password_does_not_overwrite_stored_secret(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.executemany(
+            """
+            INSERT INTO system_config (key, value, type)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, type = excluded.type
+            """,
+            [
+                ("mt5_login", "12345", "int"),
+                ("mt5_password", "existing-secret", "str"),
+                ("mt5_server", "Demo-Server", "str"),
+                ("mt5_paper_mode", "true", "bool"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+        config_manager.set_runtime_override("mt5_login", 12345)
+        config_manager.set_runtime_override("mt5_password", "existing-secret")
+        config_manager.set_runtime_override("mt5_server", "Demo-Server")
+
+        import asyncio
+        asyncio.run(update_mt5_config(
+            MT5Config(login=None, password="********", server=None, paperMode=True),
+            current_user=User(username="admin", role="admin"),
+        ))
+
+        conn = sqlite3.connect(self.db_path)
+        password = conn.execute("SELECT value FROM system_config WHERE key='mt5_password'").fetchone()[0]
+        conn.close()
+
+        self.assertEqual(password, "existing-secret")
 
 if __name__ == '__main__':
     unittest.main()

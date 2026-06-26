@@ -69,5 +69,22 @@ Now that you're on the Windows VPS, follow the **[VPS_DEPLOYMENT_GUIDE.md](file:
 
 1. Copy-paste your zipped project folder directly from your Mac desktop into the Windows Remote Desktop window.
 2. Open Microsoft Edge on the VPS and download/install **Python 3.10+**.
-3. Install **MetaTrader 5** from your broker's website.
+3. Install **MetaTrader 5** from your broker's website, then log into your broker demo or live account inside the VPS desktop session.
 4. Run `start_vps.bat`!
+
+## AWS Windows + MT5 Notes
+
+Native MT5 execution depends on Python talking to the local `terminal64.exe` process through Windows IPC. AWS networking can be healthy while MT5 still fails locally if Python and MT5 are not running in the same Windows context.
+
+Before testing MT5 execution:
+
+1. Open MT5 manually through the same RDP desktop session you use to start the backend.
+2. If you run the backend as Administrator, open MT5 as Administrator too. If you run MT5 normally, run the backend normally too.
+3. Avoid running the backend as a Windows service until MT5 connectivity has been verified from the interactive RDP session.
+4. Set `MT5_PATH` to the exact terminal path, usually:
+
+```powershell
+$env:MT5_PATH="C:\Program Files\MetaTrader 5\terminal64.exe"
+```
+
+If logs show `(-10005, 'IPC timeout')`, use the MT5 troubleshooting section in `VPS_DEPLOYMENT_GUIDE.md`.
