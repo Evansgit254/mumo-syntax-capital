@@ -145,7 +145,7 @@ class BacktestEngine:
                             'result_pips': outcome['pips'],
                             'closed_at': outcome['closed_at']
                         })
-                        if outcome['pips'] > 0: performance['wins'] += 1
+                        if outcome['result'] == 'TP1': performance['wins'] += 1
                         performance['total_pips'] += outcome['pips']
 
                     performance['signals'].append(trade_record)
@@ -154,10 +154,11 @@ class BacktestEngine:
             await asyncio.sleep(0)
 
         self._finalize_run(run_id, performance)
+        resolved = [s for s in performance['signals'] if s['result'] in ('TP1', 'SL')]
         return {
             "run_id": run_id,
-            "total_trades": len([s for s in performance['signals'] if s['result'] != 'BLOCKED']),
-            "win_rate": (performance['wins'] / len([s for s in performance['signals'] if s['result'] != 'BLOCKED']) * 100) if any(s['result'] != 'BLOCKED' for s in performance['signals']) else 0,
+            "total_trades": len(resolved),
+            "win_rate": (performance['wins'] / len(resolved) * 100) if resolved else 0,
             "net_pips": performance['total_pips']
         }
 
@@ -310,8 +311,9 @@ class BacktestEngine:
                   t['gate_reason'], t['regime'], t['quality_score'], t['timestamp'], t['closed_at']))
 
     def _finalize_run(self, run_id: int, perf: Dict) -> None:
-        executed = [s for s in perf['signals'] if s['result'] != 'BLOCKED']
-        wr = (perf['wins'] / len(executed) * 100) if executed else 0
+        # Only count resolved trades (TP1/SL) — excludes OPEN/CLOSED/ERROR which skew stats
+        resolved = [s for s in perf['signals'] if s['result'] in ('TP1', 'SL')]
+        wr = (perf['wins'] / len(resolved) * 100) if resolved else 0
         with sqlite3.connect(self.results_db) as conn:
             conn.execute("UPDATE backtest_runs SET total_trades = ?, win_rate = ?, net_pips = ? WHERE id = ?",
-                        (len(executed), wr, perf['total_pips'], run_id))
+                        (len(resolved), wr, perf['total_pips'], run_id))
