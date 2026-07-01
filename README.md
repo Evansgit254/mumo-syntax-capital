@@ -156,16 +156,28 @@ HistData files use semicolon-delimited ASCII format which is automatically parse
 ## ⚡ Native MT5 Terminal (v5.4.3)
 The system now operates exclusively via **Direct Native Execution**, completely bypassing cloud bridges like MetaAPI.
 
+### Recommended Brokers & Setup
+
+Depending on your capital size and trading style, two brokers are highly recommended for integration:
+
+#### 1. HFM (HotForex) — *Recommended for low-capital/Cent accounts ($50 - $200)*
+Cent accounts allow safe sizing with micro-lots since a $200 account is treated as 20,000 cents.
+* **Suffix Configuration**: You **must** set `MT5_SYMBOL_SUFFIX=c` in your configuration (to parse pairs like `EURUSDc`).
+
+#### 2. IC Markets — *Recommended for standard raw-spread accounts*
+IC Markets raw-spread account offers near-zero spreads, matching the tight slippage/spread constraints modeling in the backtest system.
+* **Suffix Configuration**: Leave `MT5_SYMBOL_SUFFIX=` empty.
+
 ### Setup (Windows)
 1. **Requirements**: `pip install MetaTrader5`
-2. **Broker**: Open your MT5 terminal (XM/HFM) and login locally.
+2. **Broker**: Open your MT5 terminal (XM/HFM/IC Markets) and login locally.
 3. **Configuration**:
    - `MT5_LOGIN`
    - `MT5_PASSWORD`
    - `MT5_SERVER`
    - `MT5_PATH` (for example `C:\Program Files\MetaTrader 5\terminal64.exe`)
    - `MT5_PAPER_MODE=false` (Set to `true` for paper testing)
-   - `MT5_SYMBOL_SUFFIX=` (Set if your broker uses cent suffixes like `.m`)
+   - `MT5_SYMBOL_SUFFIX=` (Set if your broker uses suffixes like `c` or `m`)
 
 This mode offers **institutional-grade execution speed** and eliminates all cloud subscription fees and rate-limiting issues.
 
