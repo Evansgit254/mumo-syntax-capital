@@ -1,9 +1,9 @@
-# 🏛️ Pure Quant Institutional Terminal (v5.4.3 - Native MT5 Only)
+# 🏛️ Pure Quant Institutional Terminal (v5.4.1 - Deep History Stress Test)
 
 > Deterministic alpha research, paper execution, and controlled deployment tooling.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Status: Research/Paper](https://img.shields.io/badge/Status-Research%2FPaper-cyan.svg)]()
 [![Core: Deterministic](https://img.shields.io/badge/Logic-Pure%20Math-white.svg)]()
 
@@ -63,6 +63,8 @@ git clone https://github.com/Evansgit254/mumo-syntax-capital.git
 cd mumo-syntax-capital
 
 # Deploy Environment
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -84,7 +86,15 @@ Manage backups, updates, and rollbacks using the native maintenance script:
 ### 4. Backtesting (Realistic Friction)
 Run the backtest engine with spread and slippage modeling (1.0 pip handicap):
 ```bash
+# Recent window (default: last 30 days via yfinance)
 python run_backtest_cli.py --days 30
+
+# Custom date range
+python run_backtest_cli.py --start 2025-01-01 --end 2025-06-30
+
+# Selective symbols (skip slow crypto/crude downloads)
+python run_backtest_cli.py --start 2022-01-02 --end 2025-12-31 \
+  --symbols "EURUSD=X,GBPUSD=X,NZDUSD=X,USDJPY=X,AUDUSD=X,GBPJPY=X,GC=F"
 ```
 
 ### 5. Visual Dashboard
@@ -93,6 +103,53 @@ Generate an interactive HTML dashboard from the SQLite backtest results:
 python generate_dashboard.py
 ```
 View the resulting `backtest_dashboard.html` for equity curves and symbol-level analysis.
+
+---
+
+## 📊 Deep History Stress Testing (v5.4.1)
+
+The system supports multi-year backtesting (2022–2025) using locally stored 1-minute bar data from [HistData.com](https://www.histdata.com/). This enables rigorous stress testing across different market regimes.
+
+### Downloading Historical Data
+
+Use the automated downloader to fetch M1 data for all supported forex pairs and gold:
+
+```bash
+# Automated download (fetches 28 ZIP files from HistData.com)
+python scripts/download_histdata.py --download
+
+# Extract and convert to Dukascopy-compatible CSVs
+python scripts/download_histdata.py --extract
+```
+
+**Supported Symbols**: EURUSD, GBPUSD, NZDUSD, USDJPY, AUDUSD, GBPJPY, XAUUSD (Gold)
+**Years Available**: 2022, 2023, 2024, 2025
+**Total Data**: ~10 million M1 bars (~477 MB)
+
+### Data Pipeline
+
+The data pipeline resamples raw M1 bars into the required timeframes automatically:
+
+```
+HistData.com (M1 ZIPs) → scripts/download_histdata.py → data/dukascopy/<SYMBOL>/*.csv
+                                                              ↓
+                                                     DukascopyLoader.load()
+                                                              ↓
+                                                    M1 → M5 / M15 / H1 resample
+                                                              ↓
+                                                     BacktestEngine simulation
+```
+
+- **M5, M15, H1**: Resampled from local M1 data via `DukascopyLoader`
+- **D1**: Fetched from yfinance (supports years of daily data natively)
+- **BTC-USD**: Fetched from Binance via CCXT (requires `pip install ccxt`)
+
+### Data Format
+
+HistData files use semicolon-delimited ASCII format which is automatically parsed:
+```
+20220103 170100;1.13000;1.13050;1.12980;1.13020;0
+```
 
 ---
 
@@ -137,17 +194,24 @@ python admin_server.py
 
 ## 📂 System Architecture
 
-```bash
-├── app/                # Terminal entry points & Dashboard API
-├── core/               # Mathematical Alpha Kernels & Risk Brain
+```
+├── app/                  # Terminal entry points & Dashboard API
+├── core/                 # Mathematical Alpha Kernels & Risk Brain
 │   ├── alpha_factors.py
-│   └── alpha_combiner.py
-├── strategies/         # Institutional Model Implementations
+│   ├── alpha_combiner.py
+│   └── backtest_engine.py  # Multi-year simulation engine
+├── strategies/           # Institutional Model Implementations
 │   ├── crt_strategy.py
 │   └── advanced_pattern_strategy.py
-├── research/           # Quantitative Backtesting & Labs
-├── tests/              # Unit/integration tests; not a 100% proof suite
-└── dashboard/          # Institutional Grid UI (HTML/CSS)
+├── data/                 # Data layer
+│   ├── fetcher.py          # yfinance real-time fetcher
+│   ├── deep_fetcher.py     # Routes deep history (Dukascopy/CCXT)
+│   └── dukascopy_loader.py # M1 CSV parser & resampler
+├── scripts/              # Operational utilities
+│   └── download_histdata.py  # Automated M1 data downloader
+├── research/             # Quantitative Backtesting & Labs
+├── tests/                # Unit/integration tests; not a 100% proof suite
+└── dashboard/            # Institutional Grid UI (HTML/CSS)
 ```
 
 ---
@@ -166,4 +230,4 @@ Trading financial markets involves significant risk. Current performance metrics
 - Signal delivery reservation fails closed if the dedupe database is unavailable, so a storage fault will block delivery instead of duplicating it.
 - Test markers now separate `integration`, `live`, and `authentic` coverage so local runs can skip external dependencies cleanly.
 
-**System Version: 5.4.3 (Pure Sovereignty Update)**
+**System Version: 5.4.1 (Deep History Stress Test Update)**

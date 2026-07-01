@@ -1,19 +1,24 @@
 # Pure Quant Research Terminal Versioning Central
-# Updated: 2026-06-26
+# Updated: 2026-07-01
 
 VERSION_MAJOR = 5
 VERSION_MINOR = 4
-VERSION_PATCH = 0
+VERSION_PATCH = 1
 
 # Status can be 'stable', 'beta', 'rc' (Release Candidate)
 VERSION_STATUS = "stable"
 
-RELEASE_NAME = "Client Portal API & Infrastructure"
+RELEASE_NAME = "Deep History Stress Test"
 RELEASE_NOTES = [
-    "Introduced Client Portal Product Plan and core API foundation.",
-    "Added client preferences and signal entitlement database schemas.",
-    "Enhanced alert services and trade execution reliability.",
-    "Expanded test coverage for server configuration and client APIs.",
+    "Added HistData.com automated M1 downloader (scripts/download_histdata.py).",
+    "Routed DeepDataFetcher forex/H1 through local DukascopyLoader (M1 resample).",
+    "DukascopyLoader now parses HistData semicolon-delimited ASCII format.",
+    "Optimized backtest loop: searchsorted() replaces boolean masking (~100x faster).",
+    "Added --symbols CLI flag for selective backtesting.",
+    "Added verbose progress logging during data loading phase.",
+    "Made ccxt import lazy (only needed for BTC-USD).",
+    "Fixed win-counting: uses result=='TP1' instead of pips>0.",
+    "Excluded OPEN/CLOSED/ERROR trades from header stats.",
 ]
 
 def get_version():
