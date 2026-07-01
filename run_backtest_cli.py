@@ -14,6 +14,8 @@ async def main():
                        help="Custom start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=None,
                        help="Custom end date (YYYY-MM-DD)")
+    parser.add_argument("--symbols", type=str, default=None,
+                       help="Comma-separated symbols to backtest (e.g. EURUSD=X,GBPUSD=X)")
     args = parser.parse_args()
 
     if args.start and args.end:
@@ -31,17 +33,28 @@ async def main():
     print(get_system_banner())
     print(f"🕵️  STARTING INSTITUTIONAL BACKTEST")
     print(f"📅 Range: {start_date} to {end_date}")
+    
+    target_symbols = None
+    if args.symbols:
+        target_symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+        print(f"🎯 Symbols: {', '.join(target_symbols)}")
+    else:
+        from config.config import SYMBOLS
+        target_symbols = SYMBOLS
+        print(f"🎯 Symbols: All Configured ({len(target_symbols)})")
+
     active_models = "CRT + Advanced Pattern"
     print(f"⚙️  Alpha Core: {active_models}")
     print("=" * 50)
     
-    engine = BacktestEngine(start_date, end_date)
+    engine = BacktestEngine(start_date, end_date, symbols=target_symbols)
     
-    def progress_bar(p):
+    def progress_bar(p, message=None):
         cols = 40
         done = int(p * cols)
         bar = "█" * done + "░" * (cols - done)
-        print(f"\r🚀 Progress: |{bar}| {p*100:.1f}%", end="")
+        suffix = f" - {message}" if message else ""
+        print(f"\r🚀 Progress: |{bar}| {p*100:.1f}%{suffix}", end="", flush=True)
 
     results = await engine.run(progress_callback=progress_bar)
     

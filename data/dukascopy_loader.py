@@ -27,6 +27,7 @@ import os
 import glob
 import pandas as pd
 from datetime import datetime, timezone
+from threading import RLock
 from typing import Optional
 
 # ── Symbol Mapping ─────────────────────────────────────────────────────────────
@@ -90,6 +91,8 @@ class DukascopyLoader:
         "30m":   "30min",
         "1h":    "1h",
     }
+    _m1_cache: dict[tuple, pd.DataFrame] = {}
+    _cache_lock = RLock()
 
     def __init__(self, base_dir: str = "data/dukascopy"):
         """
@@ -209,6 +212,20 @@ class DukascopyLoader:
         if not csv_paths:
             return None
 
+        signature = self._csv_signature(csv_paths)
+        cache_key = (os.path.abspath(folder), signature)
+        with self._cache_lock:
+            cached = self._m1_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        parquet_path = os.path.join(folder, "_m1_cache.parquet")
+        parquet_df = self._load_parquet_cache(parquet_path, signature)
+        if parquet_df is not None:
+            with self._cache_lock:
+                self._m1_cache[cache_key] = parquet_df
+            return parquet_df
+
         frames = []
         for path in csv_paths:
             df = self._parse_csv(path)
@@ -221,7 +238,43 @@ class DukascopyLoader:
         combined = pd.concat(frames)
         combined.sort_index(inplace=True)
         combined = combined[~combined.index.duplicated(keep='first')]
+        self._write_parquet_cache(parquet_path, combined, signature)
+        with self._cache_lock:
+            self._m1_cache[cache_key] = combined
         return combined
+
+    def _csv_signature(self, csv_paths: list[str]) -> tuple:
+        """Builds a cheap freshness signature for cache invalidation."""
+        return tuple(
+            (os.path.abspath(path), os.path.getsize(path), os.path.getmtime(path))
+            for path in csv_paths
+        )
+
+    def _load_parquet_cache(self, parquet_path: str, signature: tuple) -> Optional[pd.DataFrame]:
+        """Loads a local M1 Parquet cache when it is fresher than the CSV source set."""
+        if not os.path.exists(parquet_path):
+            return None
+        latest_csv_mtime = max(item[2] for item in signature)
+        if os.path.getmtime(parquet_path) < latest_csv_mtime:
+            return None
+        try:
+            df = pd.read_parquet(parquet_path)
+            if not isinstance(df.index, pd.DatetimeIndex):
+                df.index = pd.to_datetime(df.index, utc=True)
+            elif df.index.tz is None:
+                df.index = df.index.tz_localize("UTC")
+            return df
+        except Exception:
+            return None
+
+    def _write_parquet_cache(self, parquet_path: str, df: pd.DataFrame, signature: tuple) -> None:
+        """Writes a best-effort Parquet cache; CSV remains the source of truth."""
+        if not signature:
+            return
+        try:
+            df.to_parquet(parquet_path)
+        except Exception:
+            return
 
     def _find_folder(self, symbol: str) -> Optional[str]:
         """Finds the folder for a given symbol (yfinance or Dukascopy name)."""
@@ -281,6 +334,11 @@ class DukascopyLoader:
                 df = pd.read_csv(path, header=None, names=["date", "time", "open", "high", "low", "close", "volume"])
                 df["datetime"] = pd.to_datetime(df["date"].astype(str) + " " + df["time"].astype(str))
                 df.drop(columns=["date", "time"], inplace=True)
+
+            elif ";" in first_line and len(first_line.split(";")) >= 6 and not any(c.isalpha() for c in first_line.replace(".","").replace(":","").replace(";","").replace(" ","")):
+                # HistData ASCII semicolon format: 20220103 170000;1.13700;1.13700;1.13700;1.13700;0
+                df = pd.read_csv(path, sep=";", header=None, names=["datetime", "open", "high", "low", "close", "volume"])
+                df["datetime"] = pd.to_datetime(df["datetime"].astype(str).str.strip(), format="%Y%m%d %H%M%S")
 
             else:
                 # Try generic parse with first column as datetime

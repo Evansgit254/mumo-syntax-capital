@@ -2167,7 +2167,7 @@ async def get_observation_report(current_user: User = Depends(get_current_user))
 # V32.0: BACKTESTING APIs
 # ═══════════════════════════════════════════════════════════════════════════
 
-BACKTEST_PROGRESS = {}  # {job_id: {"progress": float, "status": str, "error": str|None}}
+BACKTEST_PROGRESS = {}  # {job_id: {"progress": float, "status": str, "error": str|None, "message": str}}
 
 @app.post("/api/backtest/run")
 async def run_backtest(request: Request, current_user: User = Depends(get_current_user)):
@@ -2178,31 +2178,48 @@ async def run_backtest(request: Request, current_user: User = Depends(get_curren
     end_date = data.get("end_date", datetime.now().strftime('%Y-%m-%d'))
     
     unique_id = secrets.token_hex(4)
-    BACKTEST_PROGRESS[unique_id] = {"progress": 0.0, "status": "running", "error": None}
+    BACKTEST_PROGRESS[unique_id] = {"progress": 0.0, "status": "running", "error": None, "message": "Queued"}
     
     async def task():
         try:
             engine = BacktestEngine(start_date, end_date)
-            def update_prog(p): BACKTEST_PROGRESS[unique_id]["progress"] = round(p * 100, 1)
+            def update_prog(p, message=None):
+                BACKTEST_PROGRESS[unique_id].update({
+                    "progress": round(p * 100, 1),
+                    "message": message or BACKTEST_PROGRESS[unique_id].get("message") or "Running",
+                })
             result = await engine.run(progress_callback=update_prog)
             if isinstance(result, dict) and "error" in result:
-                BACKTEST_PROGRESS[unique_id] = {"progress": 0.0, "status": "error", "error": result["error"]}
+                BACKTEST_PROGRESS[unique_id] = {
+                    "progress": BACKTEST_PROGRESS[unique_id].get("progress", 0.0),
+                    "status": "error",
+                    "error": result["error"],
+                    "message": "Failed",
+                }
                 print(f"❌ Backtest {unique_id} failed: {result['error']}")
             else:
-                BACKTEST_PROGRESS[unique_id] = {"progress": 100.0, "status": "done", "error": None}
+                BACKTEST_PROGRESS[unique_id] = {"progress": 100.0, "status": "done", "error": None, "message": "Backtest complete"}
                 print(f"✅ Backtest {unique_id} completed successfully.")
         except Exception as e:
             print(f"💥 Backtest {unique_id} crashed: {e}")
             import traceback; traceback.print_exc()
-            BACKTEST_PROGRESS[unique_id] = {"progress": 0.0, "status": "error", "error": str(e)}
+            BACKTEST_PROGRESS[unique_id] = {
+                "progress": BACKTEST_PROGRESS[unique_id].get("progress", 0.0),
+                "status": "error",
+                "error": str(e),
+                "message": "Crashed",
+            }
         
     asyncio.create_task(task())
     return {"job_id": unique_id, "status": "started"}
 
 @app.get("/api/backtest/progress/{job_id}")
 async def get_backtest_progress(job_id: str, current_user: User = Depends(get_current_user)):
-    info = BACKTEST_PROGRESS.get(job_id, {"progress": 0.0, "status": "unknown", "error": None})
-    return {"progress": info["progress"], "status": info["status"], "error": info["error"]}
+    info = BACKTEST_PROGRESS.get(
+        job_id,
+        {"progress": 0.0, "status": "unknown", "error": None, "message": "Unknown job"},
+    )
+    return {"progress": info["progress"], "status": info["status"], "error": info["error"], "message": info.get("message")}
 
 @app.get("/api/backtest/latest_job")
 async def get_latest_job(current_user: User = Depends(get_current_user)):

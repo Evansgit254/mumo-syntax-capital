@@ -79,6 +79,22 @@ def test_dukascopy_loader_resample(temp_duka_dir):
     assert df.iloc[0]['high'] == 1.1015
     assert df.iloc[0]['volume'] == 220.0
 
+def test_dukascopy_loader_reuses_m1_cache_for_multiple_timeframes(temp_duka_dir, monkeypatch):
+    loader = DukascopyLoader(base_dir=temp_duka_dir)
+    parse_count = 0
+    original_parse = loader._parse_csv
+
+    def counting_parse(path):
+        nonlocal parse_count
+        parse_count += 1
+        return original_parse(path)
+
+    monkeypatch.setattr(loader, "_parse_csv", counting_parse)
+
+    assert loader.load("EURUSD=X", timeframe="1min") is not None
+    assert loader.load("EURUSD=X", timeframe="5min") is not None
+    assert parse_count == 1
+
 def test_dukascopy_loader_load_for_event(temp_duka_dir):
     loader = DukascopyLoader(base_dir=temp_duka_dir)
     df = loader.load_for_event("EURUSD=X", "2024-01-01", 0, timeframe="1min", bars_before=0, bars_after=1)

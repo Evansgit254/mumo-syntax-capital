@@ -1506,8 +1506,9 @@
                         return;
                     }
 
+                    const progressText = `${pData.progress}%${pData.message ? ' - ' + pData.message : ''}`;
                     if (bar) bar.style.width = pData.progress + '%';
-                    if (txt) txt.innerText = pData.progress + '%';
+                    if (txt) txt.innerText = progressText;
 
                     if (pData.status === 'error') {
                         clearInterval(poll);

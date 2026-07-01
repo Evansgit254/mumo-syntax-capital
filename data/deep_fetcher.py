@@ -1,7 +1,6 @@
 import asyncio
 import pandas as pd
 from datetime import datetime, timezone
-import ccxt
 try:
     from dukascopy_python import fetch as duka_fetch
 except ImportError:
@@ -22,6 +21,7 @@ class DeepDataFetcher:
 
     @staticmethod
     async def _fetch_crypto_binance(symbol: str, timeframe: str, start_date: str, end_date: str) -> pd.DataFrame:
+        import ccxt
         exchange = ccxt.binance({
             'enableRateLimit': True,
         })
@@ -42,7 +42,13 @@ class DeepDataFetcher:
         def fetch_sync():
             nonlocal since_ms, end_ms
             local_ohlcv = []
+            total_days = max(1, (end_dt - since_dt).days)
             while since_ms < end_ms:
+                current_dt = datetime.fromtimestamp(since_ms / 1000, tz=timezone.utc)
+                remaining_days = (end_dt - current_dt).days
+                pct = max(0.0, min(100.0, ((total_days - remaining_days) / total_days) * 100))
+                print(f"\r      [CCXT] Fetching BTC/USDT history: {pct:.1f}% ({current_dt.strftime('%Y-%m-%d')} → {end_date})", end="", flush=True)
+                
                 ohlcv = exchange.fetch_ohlcv('BTC/USDT', ccxt_tf, since=since_ms, limit=1000)
                 if not len(ohlcv):
                     break
@@ -54,6 +60,7 @@ class DeepDataFetcher:
                     
                 local_ohlcv += ohlcv
                 since_ms = ohlcv[-1][0] + 1  # Next bar
+            print("\n      [CCXT] Fetch complete.", flush=True)
             return local_ohlcv
 
         # Run ccxt sync fetching in thread
@@ -71,7 +78,17 @@ class DeepDataFetcher:
 
     @staticmethod
     async def _fetch_forex_dukascopy(symbol: str, timeframe: str, start_date: str, end_date: str) -> pd.DataFrame:
-        # dukascopy_python is currently broken on PyPI for pagination.
-        # Returning an empty DataFrame here correctly signals the Backtest Engine
-        # to fallback to standard yfinance H1 representation for deep history.
-        return pd.DataFrame()
+        # Route to local DukascopyLoader to read the M1 CSV files downloaded for this symbol
+        from data.dukascopy_loader import DukascopyLoader
+        
+        # Map yfinance-style timeframes ('5m', '15m') to DukascopyLoader expectations ('5min', '15min')
+        tf_map = {"5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h", "1d": "1d"}
+        loader_tf = tf_map.get(timeframe, timeframe)
+        
+        def load_sync():
+            loader = DukascopyLoader()
+            return loader.load(symbol, timeframe=loader_tf, start_date=start_date, end_date=end_date)
+
+        loop = asyncio.get_running_loop()
+        df = await loop.run_in_executor(None, load_sync)
+        return df if df is not None else pd.DataFrame()

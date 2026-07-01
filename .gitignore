@@ -11,6 +11,8 @@ __pycache__/
 outputs/
 logs/
 data/historical/
+data/dukascopy/**/*.csv
+data/dukascopy/**/*.parquet
 *.db
 *.db-wal
 *.db-shm
